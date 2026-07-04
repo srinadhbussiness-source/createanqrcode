@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   QrCode as QrCodeIcon, Plus, Globe, Wifi, IndianRupee, Contact,
@@ -148,10 +149,53 @@ function RecentCard({ code, onClick }: { code: QrCodeRecord; onClick: () => void
   )
 }
 
-// Helper hook
+// Helper hook — works in BOTH local dev (API routes) and Cloudflare (Supabase client)
 function useQRQuery() {
-  const qc = useQueryClient()
-  return { data: qc.getQueryData<{ data: QrCodeRecord[] }>(['qr-codes']) }
+  const [data, setData] = useState<{ data: QrCodeRecord[] } | null>(null)
+  const user = useAuthStore((s) => s.user)
+
+  useEffect(() => {
+    let cancelled = false
+    async function fetchCodes() {
+      try {
+        // Try API route first (local dev)
+        const res = await fetch('/api/qr-codes', { credentials: 'include' })
+        if (res.ok) {
+          const json = await res.json()
+          if (!cancelled) setData(json)
+          return
+        }
+        // Static mode (Cloudflare) — use Supabase client directly
+        if (user?.id) {
+          const { getSupabaseClient } = await import('@/lib/supabase-client')
+          const sb = getSupabaseClient()
+          if (!sb) { if (!cancelled) setData({ data: [] }); return }
+          const { data: codes } = await sb
+            .from('QrCode')
+            .select('*')
+            .eq('userId', user.id)
+            .eq('trashed', false)
+            .order('updatedAt', { ascending: false })
+          // Parse JSON fields
+          const parsed = (codes || []).map((c: Record<string, unknown>) => ({
+            ...c,
+            design: typeof c.design === 'string' ? JSON.parse(c.design as string) : c.design,
+            tags: typeof c.tags === 'string' ? JSON.parse(c.tags as string) : c.tags,
+            redirectRules: c.redirectRules ? (typeof c.redirectRules === 'string' ? JSON.parse(c.redirectRules as string) : c.redirectRules) : null,
+          }))
+          if (!cancelled) setData({ data: parsed as QrCodeRecord[] })
+        } else {
+          if (!cancelled) setData({ data: [] })
+        }
+      } catch {
+        if (!cancelled) setData({ data: [] })
+      }
+    }
+    fetchCodes()
+    return () => { cancelled = true }
+  }, [user?.id])
+
+  return { data }
 }
 
 export default DashboardView
