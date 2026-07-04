@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     "Create stunning QR codes in seconds. 83+ types, full design control, dynamic links with scan analytics. Free forever, no watermark, no sign-up. Pricing in USD.",
   keywords: ["QR code generator", "free QR code", "UPI QR code", "WiFi QR code", "vCard QR", "dynamic QR code", "QR analytics"],
   authors: [{ name: "CreateAnQRCode" }],
-  icons: { icon: "/logo.svg" },
+  icons: { icon: [{ url: "/favicon.ico", sizes: "any" }, { url: "/logo.svg", type: "image/svg+xml" }] },
   openGraph: {
     title: "CreateAnQRCode — Create Stunning QR Codes in Seconds. Free.",
     description: "Create stunning QR codes in seconds. 83+ types, no watermark, free forever.",
