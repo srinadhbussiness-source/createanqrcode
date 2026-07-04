@@ -114,12 +114,42 @@ export function SignupView() {
     }
     setLoading(true)
     try {
+      // Detect static mode (Cloudflare) vs API mode (local dev)
+      const staticRes = await fetch('/api/auth/me', { credentials: 'include' })
+      const isStatic = staticRes.status === 404
+
+      if (isStatic) {
+        // Firebase Auth (Cloudflare Pages)
+        const { getFirebaseAuth } = await import('@/lib/firebase')
+        const auth = getFirebaseAuth()
+        if (!auth) { toast.error('Auth not configured.'); return }
+        const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth')
+        const cred = await createUserWithEmailAndPassword(auth, email, password)
+        if (name && cred.user) {
+          await updateProfile(cred.user, { displayName: name })
+        }
+        const fbUser = cred.user
+        setUser({
+          id: fbUser.uid, email: fbUser.email ?? '', name: name || fbUser.displayName,
+          avatarUrl: fbUser.photoURL, plan: 'free', trialEndsAt: null,
+          timezone: 'Asia/Kolkata', dateFormat: 'DD/MM/YYYY',
+          emailVerified: fbUser.emailVerified, role: 'user', suspended: false,
+          twoFactorEnabled: false, notifSecurity: true, notifTrial: true,
+          notifScans: true, notifExpiry: true, notifDigest: false, notifUpdates: false,
+          createdAt: new Date().toISOString(),
+        } as Parameters<typeof setUser>[0])
+        toast.success('Account created! Welcome to CreateAnQRCode.')
+        navigate('dashboard')
+        return
+      }
+
+      // API route mode (local dev)
       const user = await api.post('/api/auth/signup', { email, password, name: name || undefined })
       setUser(user as Parameters<typeof setUser>[0])
       toast.success('Account created! Welcome to CreateAnQRCode.')
       navigate('verify-email', { email })
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Sign up failed. Please try again.'
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Sign up failed. Please try again.')
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -163,18 +193,7 @@ export function SignupView() {
               variant="outline"
               className="w-full"
               onClick={async () => {
-                try {
-                  const { getSupabaseClient } = await import('@/lib/supabase-client')
-                  const sb = getSupabaseClient()
-                  if (!sb) { toast.error('Google sign-in is not configured.'); return }
-                  const { error } = await sb.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                      redirectTo: `${window.location.origin}/signup?google=true`,
-                    },
-                  })
-                  if (error) toast.error(error.message)
-                } catch { toast.error('Google sign-in failed.') }
+                toast.info('Google sign-in is coming soon. Please use email/password.')
               }}
             >
               <GoogleIcon className="mr-2 h-4 w-4" />
