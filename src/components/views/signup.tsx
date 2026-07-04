@@ -202,10 +202,50 @@ export function SignupView() {
               variant="outline"
               className="w-full"
               onClick={async () => {
-                toast.info('Google sign-in is coming soon. Please use email/password.')
+                try {
+                  const staticRes = await fetch('/api/auth/me', { credentials: 'include' })
+                  const isStatic = staticRes.status === 404
+
+                  if (isStatic) {
+                    // Firebase Google Auth (Cloudflare)
+                    const { getFirebaseAuth } = await import('@/lib/firebase')
+                    const auth = getFirebaseAuth()
+                    if (!auth) { toast.error('Auth not configured.'); return }
+                    const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth')
+                    const provider = new GoogleAuthProvider()
+                    setGoogleLoading(true)
+                    const result = await signInWithPopup(auth, provider)
+                    const fbUser = result.user
+                    setUser({
+                      id: fbUser.uid, email: fbUser.email ?? '', name: fbUser.displayName,
+                      avatarUrl: fbUser.photoURL, plan: 'free', trialEndsAt: null,
+                      timezone: 'Asia/Kolkata', dateFormat: 'DD/MM/YYYY',
+                      emailVerified: fbUser.emailVerified, role: 'user', suspended: false,
+                      twoFactorEnabled: false, notifSecurity: true, notifTrial: true,
+                      notifScans: true, notifExpiry: true, notifDigest: false, notifUpdates: false,
+                      createdAt: new Date().toISOString(),
+                    } as Parameters<typeof setUser>[0])
+                    toast.success('Welcome to CreateAnQRCode!')
+                    navigate('dashboard')
+                  } else {
+                    // Local dev — Supabase Google OAuth
+                    const { getSupabaseClient } = await import('@/lib/supabase-client')
+                    const sb = getSupabaseClient()
+                    if (!sb) { toast.error('Google sign-in is not configured.'); return }
+                    const { error } = await sb.auth.signInWithOAuth({
+                      provider: 'google',
+                      options: { redirectTo: `${window.location.origin}/signup?google=true` },
+                    })
+                    if (error) toast.error(error.message)
+                  }
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : 'Google sign-in failed.'
+                  toast.error(msg)
+                  setGoogleLoading(false)
+                }
               }}
             >
-              <GoogleIcon className="mr-2 h-4 w-4" />
+              {googleLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon className="mr-2 h-4 w-4" />}
               Continue with Google
             </Button>
 
