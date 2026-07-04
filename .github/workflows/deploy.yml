@@ -1,0 +1,59 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Generate Prisma Client
+        run: bunx prisma generate
+        env:
+          DATABASE_URL: "file:./db/custom.db"
+
+      - name: Build static site for Cloudflare
+        run: |
+          # Switch to static export mode
+          sed -i 's/output: "standalone"/output: "export"/' next.config.ts
+
+          # Remove server-only routes that can't be statically exported
+          rm -rf src/app/api
+          rm -rf "src/app/q"
+          rm -rf "src/app/[...slug]"
+          rm -rf src/app/sitemap.xml
+          rm -f src/middleware.ts
+
+          # Clear cache
+          rm -rf .next
+
+          # Build — NEXT_PUBLIC env vars are baked at build time
+          NEXT_PUBLIC_SUPABASE_URL=https://ofwkrztsqlhvhffyltfh.supabase.co \
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9md2tyenRzcWxodmhmZnlsdGZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjIwODIsImV4cCI6MjA5ODM5ODA4Mn0.juIue0-yhNH3GugzOlUHcywPHtYAvy8E_NLejQLm-WI \
+          NEXT_PUBLIC_SITE_URL=https://createanqrcode.pages.dev \
+          npx next build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy out --project-name=createanqrcode

@@ -1,0 +1,807 @@
+     1→'use client'
+     2→
+     3→import { useState, useRef } from 'react'
+     4→import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  User, Globe, Bell, Shield, Database, Loader2, Save, Upload, Trash2,
+     8→  Monitor, Smartphone, Tablet, LogOut, Lock, Download, AlertTriangle,
+     9→  Check, Mail, Crown,
+    10→} from 'lucide-react'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Badge } from '@/components/ui/badge'
+    16→import { Checkbox } from '@/components/ui/checkbox'
+    17→import { Switch } from '@/components/ui/switch'
+    18→import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+    19→import { Separator } from '@/components/ui/separator'
+    20→import {
+    21→  Tabs, TabsList, TabsTrigger, TabsContent,
+    22→} from '@/components/ui/tabs'
+    23→import {
+    24→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    25→} from '@/components/ui/select'
+    26→import {
+    27→  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+    28→} from '@/components/ui/dialog'
+    29→import {
+    30→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    31→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    32→} from '@/components/ui/alert-dialog'
+    33→import { useRouterStore, useAuthStore } from '@/lib/stores'
+    34→import { api, ApiError } from '@/lib/api'
+    35→import { PLAN_LIMITS, type Plan, type UserRecord } from '@/lib/types'
+    36→import { initials, formatDate } from '@/lib/format'
+    37→import { cn } from '@/lib/utils'
+    38→
+    39→const TIMEZONES = [
+    40→  'Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Asia/Tokyo', 'Asia/Shanghai',
+    41→  'Asia/Hong_Kong', 'Asia/Bangkok', 'Asia/Seoul', 'Asia/Karachi', 'Asia/Dhaka',
+    42→  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Madrid', 'Europe/Rome',
+    43→  'Europe/Amsterdam', 'Europe/Stockholm', 'Europe/Moscow',
+    44→  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+    45→  'America/Toronto', 'America/Mexico_City', 'America/Sao_Paulo',
+    46→  'Australia/Sydney', 'Australia/Melbourne', 'Pacific/Auckland', 'UTC',
+    47→]
+    48→
+    49→const DATE_FORMATS = [
+    50→  { value: 'dd/MM/yyyy', label: 'DD/MM/YYYY' },
+    51→  { value: 'MM/dd/yyyy', label: 'MM/DD/YYYY' },
+    52→  { value: 'yyyy-MM-dd', label: 'YYYY-MM-DD' },
+    53→]
+    54→
+    55→interface SessionRow {
+    56→  id: string
+    57→  device: string | null
+    58→  browser: string | null
+    59→  country: string | null
+    60→  current: boolean
+    61→  createdAt: string
+    62→}
+    63→
+    64→const DEVICE_ICON: Record<string, typeof Monitor> = { Desktop: Monitor, Mobile: Smartphone, Tablet: Tablet }
+    65→
+    66→export function SettingsView() {
+    67→  const navigate = useRouterStore((s) => s.navigate)
+    68→  const user = useAuthStore((s) => s.user)
+    69→  const updateUser = useAuthStore((s) => s.updateUser)
+    70→  const logout = useAuthStore((s) => s.logout)
+    71→
+    72→  // Profile state
+    73→  const [name, setName] = useState(user?.name ?? '')
+    74→  const [avatar, setAvatar] = useState<string | null>(user?.avatarUrl ?? null)
+    75→  const avatarRef = useRef<HTMLInputElement>(null)
+    76→
+    77→  // Preferences
+    78→  const [timezone, setTimezone] = useState(user?.timezone ?? 'Asia/Kolkata')
+    79→  const [dateFormat, setDateFormat] = useState(user?.dateFormat ?? 'dd/MM/yyyy')
+    80→
+    81→  // Notifications
+    82→  const [notif, setNotif] = useState({
+    83→    notifSecurity: user?.notifSecurity ?? true,
+    84→    notifTrial: user?.notifTrial ?? true,
+    85→    notifScans: user?.notifScans ?? false,
+    86→    notifExpiry: user?.notifExpiry ?? false,
+    87→    notifDigest: user?.notifDigest ?? false,
+    88→    notifUpdates: user?.notifUpdates ?? true,
+    89→  })
+    90→
+    91→  // Security
+    92→  const [pwDialogOpen, setPwDialogOpen] = useState(false)
+    93→  const [curPw, setCurPw] = useState('')
+    94→  const [newPw, setNewPw] = useState('')
+    95→  const [confirmPw, setConfirmPw] = useState('')
+    96→  const [signOutAllOpen, setSignOutAllOpen] = useState(false)
+    97→
+    98→  // Data & Privacy
+    99→  const [deleteOpen, setDeleteOpen] = useState(false)
+   100→  const [deleteConfirm, setDeleteConfirm] = useState('')
+   101→  const [exporting, setExporting] = useState(false)
+   102→
+   103→  const plan = (user?.plan ?? 'free') as Plan
+   104→  const limits = PLAN_LIMITS[plan]
+   105→
+   106→  // ---- Save mutations ----
+   107→  const profileMut = useMutation({
+   108→    mutationFn: (patch: Partial<UserRecord>) => api.patch<UserRecord>('/api/settings', patch),
+   109→    onSuccess: (u) => {
+   110→      updateUser({ name: u.name, avatarUrl: u.avatarUrl })
+   111→      toast.success('Profile saved')
+   112→    },
+   113→    onError: () => toast.error('Failed to save profile'),
+   114→  })
+   115→
+   116→  const prefsMut = useMutation({
+   117→    mutationFn: (patch: { timezone?: string; dateFormat?: string }) => api.patch<UserRecord>('/api/settings', patch),
+   118→    onSuccess: (u) => {
+   119→      updateUser({ timezone: u.timezone, dateFormat: u.dateFormat })
+   120→      toast.success('Preferences saved')
+   121→    },
+   122→    onError: () => toast.error('Failed to save preferences'),
+   123→  })
+   124→
+   125→  const notifMut = useMutation({
+   126→    mutationFn: (patch: typeof notif) => api.patch<UserRecord>('/api/settings', patch),
+   127→    onSuccess: (u) => {
+   128→      updateUser({
+   129→        notifSecurity: u.notifSecurity, notifTrial: u.notifTrial, notifScans: u.notifScans,
+   130→        notifExpiry: u.notifExpiry, notifDigest: u.notifDigest, notifUpdates: u.notifUpdates,
+   131→      })
+   132→      toast.success('Notifications saved')
+   133→    },
+   134→    onError: () => toast.error('Failed to save notifications'),
+   135→  })
+   136→
+   137→  const deleteMut = useMutation({
+   138→    mutationFn: () => api.del('/api/settings'),
+   139→    onSuccess: () => {
+   140→      toast.success('Account deleted')
+   141→      logout()
+   142→      navigate('home')
+   143→    },
+   144→    onError: () => toast.error('Failed to delete account'),
+   145→  })
+   146→
+   147→  const qc = useQueryClient()
+   148→
+   149→  // ---- Sessions (real, replaces MOCK_SESSIONS) ----
+   150→  const { data: sessionsData } = useQuery({
+   151→    queryKey: ['sessions'],
+   152→    queryFn: () => api.get<{ data: SessionRow[] }>('/api/sessions'),
+   153→  })
+   154→  const sessions = sessionsData?.data ?? []
+   155→
+   156→  const revokeMut = useMutation({
+   157→    mutationFn: (id: string) => api.del(`/api/sessions/${id}`),
+   158→    onSuccess: () => {
+   159→      toast.success('Session revoked')
+   160→      qc.invalidateQueries({ queryKey: ['sessions'] })
+   161→    },
+   162→    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Failed to revoke session'),
+   163→  })
+   164→
+   165→  const signOutAllMut = useMutation({
+   166→    mutationFn: () => api.post<{ revoked: number }>('/api/sessions/revoke-all'),
+   167→    onSuccess: (res) => {
+   168→      toast.success(`Signed out of ${res.revoked} other session${res.revoked === 1 ? '' : 's'}`)
+   169→      setSignOutAllOpen(false)
+   170→      qc.invalidateQueries({ queryKey: ['sessions'] })
+   171→    },
+   172→    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Failed to sign out others'),
+   173→  })
+   174→
+   175→  // ---- Change password (real) ----
+   176→  const changePwMut = useMutation({
+   177→    mutationFn: (vars: { currentPassword: string; newPassword: string }) =>
+   178→      api.post('/api/settings/password', vars),
+   179→    onSuccess: () => {
+   180→      toast.success('Password updated — other sessions signed out')
+   181→      setPwDialogOpen(false)
+   182→      setCurPw(''); setNewPw(''); setConfirmPw('')
+   183→      qc.invalidateQueries({ queryKey: ['sessions'] })
+   184→    },
+   185→    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Failed to update password'),
+   186→  })
+   187→
+   188→  // ---- Handlers ----
+   189→  const onAvatar = (file?: File) => {
+   190→    if (!file) return
+   191→    const reader = new FileReader()
+   192→    reader.onload = () => {
+   193→      const dataUrl = reader.result as string
+   194→      setAvatar(dataUrl)
+   195→      profileMut.mutate({ avatarUrl: dataUrl })
+   196→    }
+   197→    reader.readAsDataURL(file)
+   198→  }
+   199→
+   200→  const removeAvatar = () => {
+   201→    setAvatar(null)
+   202→    profileMut.mutate({ avatarUrl: null })
+   203→  }
+   204→
+   205→  const saveProfile = () => {
+   206→    profileMut.mutate({ name: name.trim() })
+   207→  }
+   208→
+   209→  const savePrefs = () => {
+   210→    prefsMut.mutate({ timezone, dateFormat })
+   211→  }
+   212→
+   213→  const saveNotifs = () => {
+   214→    notifMut.mutate(notif)
+   215→  }
+   216→
+   217→  const changePassword = () => {
+   218→    if (!curPw) {
+   219→      toast.error('Enter your current password')
+   220→      return
+   221→    }
+   222→    if (!newPw || newPw.length < 8 || !/[A-Z]/.test(newPw) || !/[0-9]/.test(newPw)) {
+   223→      toast.error('New password must be 8+ chars with one uppercase and one number')
+   224→      return
+   225→    }
+   226→    if (newPw !== confirmPw) {
+   227→      toast.error('Passwords do not match')
+   228→      return
+   229→    }
+   230→    changePwMut.mutate({ currentPassword: curPw, newPassword: newPw })
+   231→  }
+   232→
+   233→  const exportData = async () => {
+   234→    setExporting(true)
+   235→    try {
+   236→      const res = await fetch('/api/export', {
+   237→        headers: { Authorization: `Bearer ${useAuthStore.getState().token}` },
+   238→      })
+   239→      if (!res.ok) throw new Error('Export failed')
+   240→      const data = await res.json()
+   241→      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+   242→      const url = URL.createObjectURL(blob)
+   243→      const a = document.createElement('a')
+   244→      a.href = url
+   245→      a.download = `createanqrcode-export-${Date.now()}.json`
+   246→      a.click()
+   247→      URL.revokeObjectURL(url)
+   248→      toast.success('Data exported')
+   249→    } catch {
+   250→      toast.error('Export failed')
+   251→    } finally {
+   252→      setExporting(false)
+   253→    }
+   254→  }
+   255→
+   256→  const pwStrength = (() => {
+   257→    let s = 0
+   258→    if (newPw.length >= 8) s++
+   259→    if (/[A-Z]/.test(newPw)) s++
+   260→    if (/[0-9]/.test(newPw)) s++
+   261→    if (/[^A-Za-z0-9]/.test(newPw)) s++
+   262→    return s
+   263→  })()
+   264→  const passwordsMatch = newPw && newPw === confirmPw
+   265→
+   266→  return (
+   267→    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+   268→      {/* Header */}
+   269→      <div>
+   270→        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Settings</h1>
+   271→        <p className="mt-1 text-sm text-muted-foreground">
+   272→          Manage your profile, preferences, security, and data.
+   273→        </p>
+   274→      </div>
+   275→
+   276→      <Tabs defaultValue="profile" className="w-full">
+   277→        <TabsList className="flex h-auto flex-wrap gap-1">
+   278→          <TabsTrigger value="profile" className="gap-1.5">
+   279→            <User className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Profile</span>
+   280→          </TabsTrigger>
+   281→          <TabsTrigger value="preferences" className="gap-1.5">
+   282→            <Globe className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Preferences</span>
+   283→          </TabsTrigger>
+   284→          <TabsTrigger value="notifications" className="gap-1.5">
+   285→            <Bell className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Notifications</span>
+   286→          </TabsTrigger>
+   287→          <TabsTrigger value="security" className="gap-1.5">
+   288→            <Shield className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Security</span>
+   289→          </TabsTrigger>
+   290→          <TabsTrigger value="data" className="gap-1.5">
+   291→            <Database className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Data &amp; Privacy</span>
+   292→          </TabsTrigger>
+   293→        </TabsList>
+   294→
+   295→        {/* Profile */}
+   296→        <TabsContent value="profile" className="mt-4">
+   297→          <Card className="border-border max-w-2xl">
+   298→            <CardHeader>
+   299→              <CardTitle className="text-base">Profile</CardTitle>
+   300→            </CardHeader>
+   301→            <CardContent className="space-y-5">
+   302→              {/* Avatar */}
+   303→              <div className="flex items-center gap-4">
+   304→                <Avatar className="h-16 w-16">
+   305→                  {avatar ? (
+   306→                    <img src={avatar} alt="Avatar" className="h-full w-full object-cover rounded-full" />
+   307→                  ) : (
+   308→                    <AvatarFallback className="bg-brand-muted text-brand text-lg font-semibold">
+   309→                      {initials(name, user?.email)}
+   310→                    </AvatarFallback>
+   311→                  )}
+   312→                </Avatar>
+   313→                <div className="flex flex-wrap gap-2">
+   314→                  <Button
+   315→                    variant="outline"
+   316→                    size="sm"
+   317→                    onClick={() => avatarRef.current?.click()}
+   318→                  >
+   319→                    <Upload className="mr-1.5 h-3.5 w-3.5" /> Upload new
+   320→                  </Button>
+   321→                  {avatar && (
+   322→                    <Button
+   323→                      variant="outline"
+   324→                      size="sm"
+   325→                      onClick={removeAvatar}
+   326→                      className="text-destructive hover:text-destructive"
+   327→                    >
+   328→                      <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Remove
+   329→                    </Button>
+   330→                  )}
+   331→                  <input
+   332→                    ref={avatarRef}
+   333→                    type="file"
+   334→                    accept="image/*"
+   335→                    className="hidden"
+   336→                    onChange={(e) => onAvatar(e.target.files?.[0])}
+   337→                  />
+   338→                </div>
+   339→              </div>
+   340→
+   341→              <Separator />
+   342→
+   343→              {/* Name */}
+   344→              <div className="space-y-2">
+   345→                <Label htmlFor="name">Display name</Label>
+   346→                <Input
+   347→                  id="name"
+   348→                  value={name}
+   349→                  onChange={(e) => setName(e.target.value)}
+   350→                  placeholder="Your name"
+   351→                />
+   352→              </div>
+   353→
+   354→              {/* Email */}
+   355→              <div className="space-y-2">
+   356→                <Label htmlFor="email">Email address</Label>
+   357→                <Input
+   358→                  id="email"
+   359→                  value={user?.email ?? ''}
+   360→                  disabled
+   361→                  className="bg-muted/50 text-muted-foreground"
+   362→                />
+   363→                <p className="text-xs text-muted-foreground">
+   364→                  <Mail className="mr-1 inline h-3 w-3" />
+   365→                  Cannot be changed — contact support to update your email.
+   366→                </p>
+   367→              </div>
+   368→
+   369→              <Separator />
+   370→
+   371→              {/* Plan info */}
+   372→              <div className="flex items-center justify-between rounded-lg border border-border bg-card/50 p-3">
+   373→                <div className="flex items-center gap-2">
+   374→                  <Crown className="h-4 w-4 text-brand" />
+   375→                  <span className="text-sm font-medium">Plan</span>
+   376→                </div>
+   377→                <div className="flex items-center gap-2">
+   378→                  <Badge variant="outline" className="capitalize border-brand/40 text-brand">{plan}</Badge>
+   379→                  <Button variant="ghost" size="sm" onClick={() => navigate('billing')}>
+   380→                    Manage <Crown className="ml-1 h-3 w-3" />
+   381→                  </Button>
+   382→                </div>
+   383→              </div>
+   384→
+   385→              <div className="flex justify-end">
+   386→                <Button
+   387→                  onClick={saveProfile}
+   388→                  disabled={profileMut.isPending || name === (user?.name ?? '')}
+   389→                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+   390→                >
+   391→                  {profileMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+   392→                  Save changes
+   393→                </Button>
+   394→              </div>
+   395→            </CardContent>
+   396→          </Card>
+   397→        </TabsContent>
+   398→
+   399→        {/* Preferences */}
+   400→        <TabsContent value="preferences" className="mt-4">
+   401→          <Card className="border-border max-w-2xl">
+   402→            <CardHeader>
+   403→              <CardTitle className="text-base">Preferences</CardTitle>
+   404→            </CardHeader>
+   405→            <CardContent className="space-y-5">
+   406→              <div className="space-y-2">
+   407→                <Label>Timezone</Label>
+   408→                <Select value={timezone} onValueChange={setTimezone}>
+   409→                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   410→                  <SelectContent className="max-h-72">
+   411→                    {TIMEZONES.map((tz) => (
+   412→                      <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+   413→                    ))}
+   414→                  </SelectContent>
+   415→                </Select>
+   416→                <p className="text-xs text-muted-foreground">
+   417→                  Used for displaying dates and times in your account.
+   418→                </p>
+   419→              </div>
+   420→
+   421→              <div className="space-y-2">
+   422→                <Label>Date format</Label>
+   423→                <Select value={dateFormat} onValueChange={setDateFormat}>
+   424→                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   425→                  <SelectContent>
+   426→                    {DATE_FORMATS.map((f) => (
+   427→                      <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+   428→                    ))}
+   429→                  </SelectContent>
+   430→                </Select>
+   431→                <p className="text-xs text-muted-foreground">
+   432→                  Example: {formatDate(new Date().toISOString(), dateFormat)}
+   433→                </p>
+   434→              </div>
+   435→
+   436→              <Separator />
+   437→
+   438→              <div className="flex justify-end">
+   439→                <Button
+   440→                  onClick={savePrefs}
+   441→                  disabled={prefsMut.isPending || (timezone === user?.timezone && dateFormat === user?.dateFormat)}
+   442→                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+   443→                >
+   444→                  {prefsMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+   445→                  Save preferences
+   446→                </Button>
+   447→              </div>
+   448→            </CardContent>
+   449→          </Card>
+   450→        </TabsContent>
+   451→
+   452→        {/* Notifications */}
+   453→        <TabsContent value="notifications" className="mt-4">
+   454→          <Card className="border-border max-w-2xl">
+   455→            <CardHeader>
+   456→              <CardTitle className="text-base">Notifications</CardTitle>
+   457→              <p className="text-xs text-muted-foreground">
+   458→                Choose what we email you about.
+   459→              </p>
+   460→            </CardHeader>
+   461→            <CardContent className="space-y-1">
+   462→              <NotifRow
+   463→                label="Security alerts"
+   464→                description="New device sign-ins, password changes, API key activity."
+   465→                checked={notif.notifSecurity}
+   466→                onCheckedChange={(v) => setNotif((s) => ({ ...s, notifSecurity: v }))}
+   467→              />
+   468→              <NotifRow
+   469→                label="Trial reminders"
+   470→                description="Reminders before your trial ends."
+   471→                checked={notif.notifTrial}
+   472→                onCheckedChange={(v) => setNotif((s) => ({ ...s, notifTrial: v }))}
+   473→              />
+   474→              <NotifRow
+   475→                label="Scan milestones"
+   476→                description="Get notified when your QR codes hit scan milestones."
+   477→                checked={notif.notifScans}
+   478→                onCheckedChange={(v) => setNotif((s) => ({ ...s, notifScans: v }))}
+   479→                locked={plan === 'free' || plan === 'starter'}
+   480→                lockedLabel="Pro+"
+   481→              />
+   482→              <NotifRow
+   483→                label="QR expiry alerts"
+   484→                description="Get notified when dynamic QR codes are about to expire."
+   485→                checked={notif.notifExpiry}
+   486→                onCheckedChange={(v) => setNotif((s) => ({ ...s, notifExpiry: v }))}
+   487→                locked={plan === 'free' || plan === 'starter'}
+   488→                lockedLabel="Pro+"
+   489→              />
+   490→              <NotifRow
+   491→                label="Weekly digest"
+   492→                description="A weekly summary of your scan activity, top QR codes, and trends."
+   493→                checked={notif.notifDigest}
+   494→                onCheckedChange={(v) => setNotif((s) => ({ ...s, notifDigest: v }))}
+   495→                locked={plan !== 'business'}
+   496→                lockedLabel="Business"
+   497→              />
+   498→              <NotifRow
+   499→                label="Product updates"
+   500→                description="Occasional emails about new features and improvements."
+   501→                checked={notif.notifUpdates}
+   502→                onCheckedChange={(v) => setNotif((s) => ({ ...s, notifUpdates: v }))}
+   503→              />
+   504→              <Separator className="my-4" />
+   505→              <div className="flex justify-end">
+   506→                <Button
+   507→                  onClick={saveNotifs}
+   508→                  disabled={notifMut.isPending}
+   509→                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+   510→                >
+   511→                  {notifMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+   512→                  Save notifications
+   513→                </Button>
+   514→              </div>
+   515→            </CardContent>
+   516→          </Card>
+   517→        </TabsContent>
+   518→
+   519→        {/* Security */}
+   520→        <TabsContent value="security" className="mt-4">
+   521→          <div className="space-y-4 max-w-2xl">
+   522→            <Card className="border-border">
+   523→              <CardHeader>
+   524→                <CardTitle className="text-base">Password</CardTitle>
+   525→              </CardHeader>
+   526→              <CardContent>
+   527→                <div className="flex items-center justify-between">
+   528→                  <div>
+   529→                    <p className="text-sm">
+   530→                      Last changed: <span className="font-medium">{formatDate(user?.createdAt ?? null)}</span>
+   531→                    </p>
+   532→                    <p className="text-xs text-muted-foreground">Use a strong, unique password.</p>
+   533→                  </div>
+   534→                  <Button variant="outline" onClick={() => setPwDialogOpen(true)}>
+   535→                    <Lock className="mr-2 h-4 w-4" /> Change password
+   536→                  </Button>
+   537→                </div>
+   538→              </CardContent>
+   539→            </Card>
+   540→
+   541→            <Card className="border-border">
+   542→              <CardHeader className="flex flex-row items-center justify-between">
+   543→                <CardTitle className="text-base">Active sessions</CardTitle>
+   544→                <Button variant="ghost" size="sm" onClick={() => setSignOutAllOpen(true)}>
+   545→                  <LogOut className="mr-1.5 h-3.5 w-3.5" /> Sign out all others
+   546→                </Button>
+   547→              </CardHeader>
+   548→              <CardContent className="space-y-2">
+   549→                {sessions.length === 0 && (
+   550→                  <p className="py-4 text-center text-sm text-muted-foreground">Loading sessions…</p>
+   551→                )}
+   552→                {sessions.map((s) => {
+   553→                  const DIcon = (s.device && DEVICE_ICON[s.device]) || Monitor
+   554→                  return (
+   555→                    <div
+   556→                      key={s.id}
+   557→                      className={cn(
+   558→                        'flex items-center gap-3 rounded-lg border p-3',
+   559→                        s.current ? 'border-brand/40 bg-brand-muted/40' : 'border-border'
+   560→                      )}
+   561→                    >
+   562→                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+   563→                        <DIcon className="h-4 w-4" />
+   564→                      </span>
+   565→                      <div className="min-w-0 flex-1">
+   566→                        <p className="text-sm font-medium">
+   567→                          {s.device ?? 'Device'} · {s.browser ?? 'Browser'}
+   568→                          {s.current && (
+   569→                            <Badge variant="secondary" className="ml-2 bg-brand-muted text-brand text-[10px]">Current</Badge>
+   570→                          )}
+   571→                        </p>
+   572→                        <p className="truncate text-xs text-muted-foreground">
+   573→                          {s.country ?? 'Unknown location'} · {s.current ? 'Now' : formatDate(s.createdAt)}
+   574→                        </p>
+   575→                      </div>
+   576→                      {!s.current && (
+   577→                        <Button
+   578→                          variant="ghost"
+   579→                          size="sm"
+   580→                          className="text-destructive hover:text-destructive"
+   581→                          disabled={revokeMut.isPending}
+   582→                          onClick={() => revokeMut.mutate(s.id)}
+   583→                        >
+   584→                          Revoke
+   585→                        </Button>
+   586→                      )}
+   587→                    </div>
+   588→                  )
+   589→                })}
+   590→              </CardContent>
+   591→            </Card>
+   592→          </div>
+   593→        </TabsContent>
+   594→
+   595→        {/* Data & Privacy */}
+   596→        <TabsContent value="data" className="mt-4">
+   597→          <div className="space-y-4 max-w-2xl">
+   598→            <Card className="border-border">
+   599→              <CardHeader>
+   600→                <CardTitle className="text-base">Export your data</CardTitle>
+   601→              </CardHeader>
+   602→              <CardContent className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+   603→                <p className="text-sm text-muted-foreground">
+   604→                  Download all your QR codes, folders, payments, and settings as a JSON file.
+   605→                </p>
+   606→                <Button onClick={exportData} disabled={exporting} variant="outline">
+   607→                  {exporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+   608→                  Export data
+   609→                </Button>
+   610→              </CardContent>
+   611→            </Card>
+   612→
+   613→            <Card className="border-destructive/30">
+   614→              <CardHeader>
+   615→                <CardTitle className="text-base flex items-center gap-2 text-destructive">
+   616→                  <AlertTriangle className="h-4 w-4" /> Danger zone
+   617→                </CardTitle>
+   618→              </CardHeader>
+   619→              <CardContent className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+   620→                <div>
+   621→                  <p className="text-sm font-medium">Delete account</p>
+   622→                  <p className="text-xs text-muted-foreground">
+   623→                    Permanently delete your account and all associated data. This cannot be undone.
+   624→                  </p>
+   625→                </div>
+   626→                <Button
+   627→                  variant="outline"
+   628→                  onClick={() => setDeleteOpen(true)}
+   629→                  className="border-destructive/40 text-destructive hover:bg-destructive/5"
+   630→                >
+   631→                  <Trash2 className="mr-2 h-4 w-4" /> Delete account
+   632→                </Button>
+   633→              </CardContent>
+   634→            </Card>
+   635→          </div>
+   636→        </TabsContent>
+   637→      </Tabs>
+   638→
+   639→      {/* Change password dialog */}
+   640→      <Dialog open={pwDialogOpen} onOpenChange={setPwDialogOpen}>
+   641→        <DialogContent className="sm:max-w-md">
+   642→          <DialogHeader>
+   643→            <DialogTitle>Change password</DialogTitle>
+   644→            <DialogDescription>
+   645→              Enter your current password and choose a new one.
+   646→            </DialogDescription>
+   647→          </DialogHeader>
+   648→          <div className="space-y-3">
+   649→            <div className="space-y-1.5">
+   650→              <Label htmlFor="cur-pw">Current password</Label>
+   651→              <Input id="cur-pw" type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} />
+   652→            </div>
+   653→            <div className="space-y-1.5">
+   654→              <Label htmlFor="new-pw">New password</Label>
+   655→              <Input id="new-pw" type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+   656→              {/* Strength bar */}
+   657→              <div className="flex gap-1">
+   658→                {[0, 1, 2, 3].map((i) => (
+   659→                  <div
+   660→                    key={i}
+   661→                    className={cn(
+   662→                      'h-1 flex-1 rounded-full',
+   663→                      i < pwStrength ? (
+   664→                        pwStrength <= 1 ? 'bg-destructive' : pwStrength <= 2 ? 'bg-muted-foreground' : 'bg-foreground'
+   665→                      ) : 'bg-muted'
+   666→                    )}
+   667→                  />
+   668→                ))}
+   669→              </div>
+   670→              <p className="text-[11px] text-muted-foreground">Use 8+ chars with uppercase, numbers, and symbols.</p>
+   671→            </div>
+   672→            <div className="space-y-1.5">
+   673→              <Label htmlFor="confirm-pw">Confirm new password</Label>
+   674→              <div className="relative">
+   675→                <Input
+   676→                  id="confirm-pw"
+   677→                  type="password"
+   678→                  value={confirmPw}
+   679→                  onChange={(e) => setConfirmPw(e.target.value)}
+   680→                  className={cn(
+   681→                    confirmPw && !passwordsMatch && 'border-destructive focus-visible:ring-destructive/30'
+   682→                  )}
+   683→                />
+   684→                {confirmPw && (
+   685→                  <span className="absolute right-3 top-1/2 -translate-y-1/2">
+   686→                    {passwordsMatch ? (
+   687→                      <Check className="h-4 w-4 text-foreground" />
+   688→                    ) : (
+   689→                      <AlertTriangle className="h-4 w-4 text-destructive" />
+   690→                    )}
+   691→                  </span>
+   692→                )}
+   693→              </div>
+   694→            </div>
+   695→          </div>
+   696→          <DialogFooter>
+   697→            <Button variant="outline" onClick={() => { setPwDialogOpen(false); setCurPw(''); setNewPw(''); setConfirmPw('') }}>
+   698→              Cancel
+   699→            </Button>
+   700→            <Button
+   701→              onClick={changePassword}
+   702→              disabled={!curPw || !newPw || !passwordsMatch || changePwMut.isPending}
+   703→              className="bg-brand text-brand-foreground hover:bg-brand/90"
+   704→            >
+   705→              {changePwMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+   706→              Update password
+   707→            </Button>
+   708→          </DialogFooter>
+   709→        </DialogContent>
+   710→      </Dialog>
+   711→
+   712→      {/* Sign out all others */}
+   713→      <AlertDialog open={signOutAllOpen} onOpenChange={setSignOutAllOpen}>
+   714→        <AlertDialogContent>
+   715→          <AlertDialogHeader>
+   716→            <AlertDialogTitle>Sign out of all other sessions?</AlertDialogTitle>
+   717→            <AlertDialogDescription>
+   718→              This will sign you out of every device except this one. You will need to log in again on those devices.
+   719→            </AlertDialogDescription>
+   720→          </AlertDialogHeader>
+   721→          <AlertDialogFooter>
+   722→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   723→            <AlertDialogAction
+   724→              onClick={() => signOutAllMut.mutate()}
+   725→              disabled={signOutAllMut.isPending}
+   726→              className="bg-brand text-brand-foreground hover:bg-brand/90"
+   727→            >
+   728→              {signOutAllMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+   729→              Sign out all others
+   730→            </AlertDialogAction>
+   731→          </AlertDialogFooter>
+   732→        </AlertDialogContent>
+   733→      </AlertDialog>
+   734→
+   735→      {/* Delete account */}
+   736→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+   737→        <AlertDialogContent>
+   738→          <AlertDialogHeader>
+   739→            <AlertDialogTitle className="text-destructive">Delete your account?</AlertDialogTitle>
+   740→            <AlertDialogDescription>
+   741→              This will <strong>permanently delete</strong> your account, all QR codes, scan data,
+   742→              folders, templates, API keys, and payment history. <strong>This cannot be undone.</strong>
+   743→            </AlertDialogDescription>
+   744→          </AlertDialogHeader>
+   745→          <div className="space-y-2">
+   746→            <Label htmlFor="confirm-delete">
+   747→              Type <code className="rounded bg-muted px-1.5 py-0.5 text-xs">DELETE</code> to confirm
+   748→            </Label>
+   749→            <Input
+   750→              id="confirm-delete"
+   751→              value={deleteConfirm}
+   752→              onChange={(e) => setDeleteConfirm(e.target.value)}
+   753→              placeholder="DELETE"
+   754→              className="border-destructive/40"
+   755→            />
+   756→          </div>
+   757→          <AlertDialogFooter>
+   758→            <AlertDialogCancel onClick={() => setDeleteConfirm('')}>Cancel</AlertDialogCancel>
+   759→            <AlertDialogAction
+   760→              onClick={() => deleteMut.mutate()}
+   761→              disabled={deleteConfirm !== 'DELETE' || deleteMut.isPending}
+   762→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+   763→            >
+   764→              {deleteMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+   765→              Permanently delete my account
+   766→            </AlertDialogAction>
+   767→          </AlertDialogFooter>
+   768→        </AlertDialogContent>
+   769→      </AlertDialog>
+   770→    </div>
+   771→  )
+   772→}
+   773→
+   774→function NotifRow({
+   775→  label, description, checked, onCheckedChange, locked, lockedLabel,
+   776→}: {
+   777→  label: string
+   778→  description: string
+   779→  checked: boolean
+   780→  onCheckedChange: (v: boolean) => void
+   781→  locked?: boolean
+   782→  lockedLabel?: string
+   783→}) {
+   784→  return (
+   785→    <div className="flex items-start justify-between gap-4 rounded-lg border border-border bg-card/50 p-3">
+   786→      <div className="min-w-0 flex-1">
+   787→        <div className="flex items-center gap-2">
+   788→          <p className="text-sm font-medium">{label}</p>
+   789→          {locked && (
+   790→            <Badge variant="secondary" className="bg-brand-muted text-brand text-[10px] gap-1">
+   791→              <Lock className="h-2.5 w-2.5" /> {lockedLabel}
+   792→            </Badge>
+   793→          )}
+   794→        </div>
+   795→        <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+   796→      </div>
+   797→      <Switch
+   798→        checked={checked && !locked}
+   799→        onCheckedChange={onCheckedChange}
+   800→        disabled={locked}
+   801→      />
+   802→    </div>
+   803→  )
+   804→}
+   805→
+   806→export default SettingsView
+   807→

@@ -1,0 +1,640 @@
+     1→'use client'
+     2→
+     3→/**
+     4→ * QR Studio — global 3-panel slide-over generator.
+     5→ *
+     6→ * Rendered once at the DashboardShell level so the LHS sidebar stays visible
+     7→ * while the user generates a QR code. Triggered from:
+     8→ *   - the dashboard sidebar "Create QR" nav item (openStudio())
+     9→ *   - the dashboard "Create QR Code" button (openStudio())
+    10→ *   - quick-create chips on the dashboard (openStudio('url') etc.)
+    11→ *
+    12→ * Three panels:
+    13→ *   LEFT   — type picker + section nav (Content / Design / Logo / Download)
+    14→ *   CENTER — sticky live preview
+    15→ *   RIGHT  — properties for the active section
+    16→ *
+    17→ * Customization (the "lots of customisation" the dashboard generator was missing):
+    18→ *   - One-click preset themes (Minimal, Brand, Vibrant, Mono Dark, Sunset, Ocean)
+    19→ *   - Foreground + background color pickers with expanded preset palettes
+    20→ *   - Transparent background toggle
+    21→ *   - 6 dot styles, 3 eye styles, 4 error-correction levels, 4 output sizes
+    22→ *   - Gradient fills (none / linear / radial) with start+end colors + angle slider
+    23→ *     (this was the biggest gap — the old studio had no gradient controls)
+    24→ *   - Logo upload (PNG/SVG ≤1MB) with size + padding sliders
+    25→ *   - Randomize button (generates a random design combo for inspiration)
+    26→ *   - Save to library + PNG/SVG download
+    27→ */
+    28→
+    29→import { useState, useMemo, useRef, useEffect } from 'react'
+    30→import { useQueryClient } from '@tanstack/react-query'
+    31→import { toast } from 'sonner'
+    32→import {
+    33→  X, Search, ChevronDown, Download, Save, Upload, FileText, Loader2,
+    34→  FileEdit, Palette, Image as ImageIcon, Shuffle, Sparkles, AlertCircle,
+    35→} from 'lucide-react'
+    36→import { Button } from '@/components/ui/button'
+    37→import { Input } from '@/components/ui/input'
+    38→import { Label } from '@/components/ui/label'
+    39→import { Separator } from '@/components/ui/separator'
+    40→import { Slider } from '@/components/ui/slider'
+    41→import { Checkbox } from '@/components/ui/checkbox'
+    42→import { Switch } from '@/components/ui/switch'
+    43→import {
+    44→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    45→} from '@/components/ui/select'
+    46→import {
+    47→  Sheet, SheetContent, SheetHeader, SheetTitle, SheetClose,
+    48→} from '@/components/ui/sheet'
+    49→import { QrPreview } from '@/components/qr-preview'
+    50→import { useAuthStore, useUIStore } from '@/lib/stores'
+    51→import { api, ApiError } from '@/lib/api'
+    52→import {
+    53→  QR_TYPES, QR_TYPE_MAP, type QrTypeField,
+    54→} from '@/lib/qr-types'
+    55→import { DEFAULT_DESIGN, PLAN_LIMITS, type QrDesign, type QrTypeId } from '@/lib/types'
+    56→import { downloadQrPng, downloadQrSvg } from '@/lib/qr-generate'
+    57→import { cn } from '@/lib/utils'
+    58→
+    59→const STUDIO_SECTIONS = [
+    60→  { id: 'content', label: 'Content', icon: FileEdit },
+    61→  { id: 'design', label: 'Design', icon: Palette },
+    62→  { id: 'logo', label: 'Logo', icon: ImageIcon },
+    63→  { id: 'download', label: 'Download', icon: Download },
+    64→] as const
+    65→
+    66→const DOT_STYLES = [
+    67→  { id: 'square', label: 'Square' }, { id: 'rounded', label: 'Rounded' }, { id: 'dots', label: 'Dots' },
+    68→  { id: 'classy', label: 'Classy' }, { id: 'classy-rounded', label: 'Classy Rnd' }, { id: 'extra-rounded', label: 'Extra Rnd' },
+    69→] as const
+    70→
+    71→const EYE_STYLES = [
+    72→  { id: 'square', label: 'Square' }, { id: 'extra-rounded', label: 'Rounded' }, { id: 'dot', label: 'Dot' },
+    73→] as const
+    74→
+    75→const EC_LEVELS = [
+    76→  { id: 'L', label: 'L', helper: '~7% recovery' },
+    77→  { id: 'M', label: 'M', helper: '~15% recovery' },
+    78→  { id: 'Q', label: 'Q', helper: '~25% · logos' },
+    79→  { id: 'H', label: 'H', helper: '~30% · damaged' },
+    80→] as const
+    81→
+    82→// Expanded palettes (was 8 + 6, now 10 + 8)
+    83→const COLOR_PRESETS = ['#000000', '#374151', '#7C3AED', '#EC4899', '#DC2626', '#EA580C', '#D97706', '#16A34A', '#0891B2', '#1E40AF']
+    84→const BG_PRESETS = ['#FFFFFF', '#F8FAFC', '#FEF3C7', '#E0E7FF', '#FCE7F3', '#DBEAFE', '#D1FAE5', '#000000']
+    85→
+    86→// Gradient presets — the biggest missing customization piece.
+    87→const GRADIENT_PRESETS: { name: string; start: string; end: string }[] = [
+    88→  { name: 'Purple', start: '#7C3AED', end: '#EC4899' },
+    89→  { name: 'Sunset', start: '#EA580C', end: '#DC2626' },
+    90→  { name: 'Ocean', start: '#0891B2', end: '#1E40AF' },
+    91→  { name: 'Forest', start: '#16A34A', end: '#065F46' },
+    92→  { name: 'Mono', start: '#18181B', end: '#71717A' },
+    93→  { name: 'Berry', start: '#EC4899', end: '#7C3AED' },
+    94→]
+    95→
+    96→// One-click full-design themes (dot + eye + colors + gradient combo).
+    97→const DESIGN_THEMES: { name: string; design: Partial<QrDesign> }[] = [
+    98→  { name: 'Minimal', design: { fgColor: '#000000', bgColor: '#FFFFFF', transparentBg: false, dotStyle: 'square', eyeStyle: 'square', gradientType: 'none' } },
+    99→  { name: 'Brand', design: { fgColor: '#7C3AED', bgColor: '#FFFFFF', transparentBg: false, dotStyle: 'rounded', eyeStyle: 'extra-rounded', gradientType: 'none' } },
+   100→  { name: 'Vibrant', design: { dotStyle: 'rounded', eyeStyle: 'extra-rounded', gradientType: 'linear', gradientStart: '#7C3AED', gradientEnd: '#EC4899', gradientAngle: 45, bgColor: '#FFFFFF', transparentBg: false } },
+   101→  { name: 'Mono Dark', design: { fgColor: '#FFFFFF', bgColor: '#000000', transparentBg: false, dotStyle: 'dots', eyeStyle: 'dot', gradientType: 'none' } },
+   102→  { name: 'Sunset', design: { dotStyle: 'classy-rounded', eyeStyle: 'extra-rounded', gradientType: 'linear', gradientStart: '#EA580C', gradientEnd: '#DC2626', gradientAngle: 135, bgColor: '#FFFFFF', transparentBg: false } },
+   103→  { name: 'Ocean', design: { dotStyle: 'extra-rounded', eyeStyle: 'extra-rounded', gradientType: 'linear', gradientStart: '#0891B2', gradientEnd: '#1E40AF', gradientAngle: 90, bgColor: '#FFFFFF', transparentBg: false } },
+   104→]
+   105→
+   106→function randomDesign(): QrDesign {
+   107→  const dots = DOT_STYLES[Math.floor(Math.random() * DOT_STYLES.length)].id
+   108→  const eyes = EYE_STYLES[Math.floor(Math.random() * EYE_STYLES.length)].id
+   109→  const ec = EC_LEVELS[Math.floor(Math.random() * EC_LEVELS.length)].id
+   110→  const useGradient = Math.random() > 0.4
+   111→  const gp = GRADIENT_PRESETS[Math.floor(Math.random() * GRADIENT_PRESETS.length)]
+   112→  const fg = COLOR_PRESETS[Math.floor(Math.random() * COLOR_PRESETS.length)]
+   113→  const bg = BG_PRESETS[Math.floor(Math.random() * BG_PRESETS.length)]
+   114→  return {
+   115→    ...DEFAULT_DESIGN,
+   116→    dotStyle: dots,
+   117→    eyeStyle: eyes,
+   118→    errorCorrection: ec,
+   119→    fgColor: fg,
+   120→    bgColor: bg,
+   121→    transparentBg: false,
+   122→    gradientType: useGradient ? 'linear' : 'none',
+   123→    gradientStart: gp.start,
+   124→    gradientEnd: gp.end,
+   125→    gradientAngle: Math.floor(Math.random() * 360),
+   126→  }
+   127→}
+   128→
+   129→export function QrStudio() {
+   130→  const open = useUIStore((s) => s.studioOpen)
+   131→  const closeStudio = useUIStore((s) => s.closeStudio)
+   132→  const studioType = useUIStore((s) => s.studioType)
+   133→  const quickCreateType = useUIStore((s) => s.quickCreateType)
+   134→  const user = useAuthStore((s) => s.user)
+   135→  const qc = useQueryClient()
+   136→
+   137→  const [activeSection, setActiveSection] = useState<'content' | 'design' | 'logo' | 'download'>('content')
+   138→  const [selectedType, setSelectedType] = useState<QrTypeId>((studioType as QrTypeId) || 'url')
+   139→  const [title, setTitle] = useState('My QR Code')
+   140→  const [formValues, setFormValues] = useState<Record<string, string | boolean>>({})
+   141→  const [design, setDesign] = useState<QrDesign>({ ...DEFAULT_DESIGN, dotStyle: 'rounded', eyeStyle: 'extra-rounded', errorCorrection: 'Q' })
+   142→  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+   143→  const [isDynamic, setIsDynamic] = useState(false)
+   144→  const [saving, setSaving] = useState(false)
+   145→  const [downloading, setDownloading] = useState(false)
+   146→  const [typeSearch, setTypeSearch] = useState('')
+   147→  const [showTypePicker, setShowTypePicker] = useState(false)
+   148→  const fileInputRef = useRef<HTMLInputElement>(null)
+   149→
+   150→  const plan = user?.plan ?? 'free'
+   151→  const dynamicLimit = PLAN_LIMITS[plan].dynamicQr
+   152→
+   153→  // Sync the selected type when the global studioType changes (e.g. quick-create chip)
+   154→  useEffect(() => {
+   155→    if (studioType && QR_TYPE_MAP[studioType]) {
+   156→      setSelectedType(studioType as QrTypeId)
+   157→    }
+   158→  }, [studioType])
+   159→
+   160→  const def = QR_TYPE_MAP[selectedType]
+   161→  const payload = useMemo(() => def?.buildPayload(formValues) || '', [def, formValues])
+   162→
+   163→  // Reset form when the type changes
+   164→  useEffect(() => {
+   165→    if (!def) return
+   166→    const vals: Record<string, string | boolean> = {}
+   167→    for (const f of def.fields) vals[f.key] = f.defaultValue ?? (f.type === 'checkbox' ? false : '')
+   168→    setFormValues(vals)
+   169→    setTitle(`${def.label} QR Code`)
+   170→  }, [selectedType, def])
+   171→
+   172→  const updateDesign = (patch: Partial<QrDesign>) => setDesign((d) => ({ ...d, ...patch }))
+   173→  const handleFieldChange = (k: string, v: string | boolean) => setFormValues((prev) => ({ ...prev, [k]: v }))
+   174→
+   175→  const handleDownload = async (kind: 'png' | 'svg') => {
+   176→    if (!payload) { toast.error('Fill the form first'); setActiveSection('content'); return }
+   177→    setDownloading(true)
+   178→    try {
+   179→      const fn = (title || 'qr-code').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()
+   180→      if (kind === 'png') await downloadQrPng(payload, design, logoDataUrl, fn)
+   181→      else await downloadQrSvg(payload, design, logoDataUrl, fn)
+   182→      toast.success(`Downloaded ${kind.toUpperCase()}`)
+   183→    } catch { toast.error('Download failed') } finally { setDownloading(false) }
+   184→  }
+   185→
+   186→  const handleSave = async () => {
+   187→    if (!payload) { toast.error('Fill the form first'); setActiveSection('content'); return }
+   188→    if (!title.trim()) { toast.error('Title is required'); setActiveSection('content'); return }
+   189→    setSaving(true)
+   190→    try {
+   191→      await api.post('/api/qr-codes', {
+   192→        title: title.trim(),
+   193→        qrType: selectedType,
+   194→        isDynamic,
+   195→        // For dynamic codes, the payload IS the destination URL (so the scan
+   196→        // redirect can route to it + we can track scans + change it later).
+   197→        // For static codes, the payload is baked into the QR itself.
+   198→        staticPayload: isDynamic ? null : payload,
+   199→        destinationUrl: isDynamic ? payload : null,
+   200→        password: null,
+   201→        expiresAt: null,
+   202→        maxScans: null,
+   203→        design,
+   204→        logoDataUrl,
+   205→        tags: [],
+   206→      })
+   207→      qc.invalidateQueries({ queryKey: ['qr-codes'] })
+   208→      toast.success(isDynamic ? 'Dynamic QR code saved!' : 'QR code saved!')
+   209→      closeStudio()
+   210→    } catch (e) { toast.error(e instanceof ApiError ? e.message : 'Save failed') } finally { setSaving(false) }
+   211→  }
+   212→
+   213→  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+   214→    const file = e.target.files?.[0]
+   215→    if (!file) return
+   216→    if (file.size > 1024 * 1024) { toast.error('Logo must be under 1MB'); return }
+   217→    const reader = new FileReader()
+   218→    reader.onload = () => { setLogoDataUrl(reader.result as string); toast.success('Logo added') }
+   219→    reader.readAsDataURL(file)
+   220→  }
+   221→
+   222→  const filteredTypes = useMemo(() => {
+   223→    if (!typeSearch) return QR_TYPES
+   224→    const q = typeSearch.toLowerCase()
+   225→    return QR_TYPES.filter((t) => t.label.toLowerCase().includes(q) || t.description.toLowerCase().includes(q))
+   226→  }, [typeSearch])
+   227→
+   228→  return (
+   229→    <Sheet open={open} onOpenChange={(v) => { if (!v) closeStudio() }}>
+   230→      <SheetContent side="right" className="w-full overflow-hidden p-0 sm:max-w-4xl">
+   231→        <SheetHeader className="border-b border-border px-6 py-4">
+   232→          <div className="flex items-center justify-between">
+   233→            <SheetTitle className="flex items-center gap-2 text-lg font-bold">
+   234→              <Sparkles className="h-5 w-5 text-brand" />
+   235→              QR Studio
+   236→            </SheetTitle>
+   237→            <SheetClose asChild>
+   238→              <Button variant="ghost" size="icon" className="h-8 w-8"><X className="h-4 w-4" /></Button>
+   239→            </SheetClose>
+   240→          </div>
+   241→        </SheetHeader>
+   242→
+   243→        {/* 3-panel layout */}
+   244→        <div className="flex h-[calc(100vh-8rem)]">
+   245→          {/* LEFT SIDEBAR — type picker + section nav */}
+   246→          <div className="hidden w-48 shrink-0 border-r border-border bg-muted/20 sm:flex sm:flex-col">
+   247→            <div className="p-3">
+   248→              {/* Type picker button */}
+   249→              <button onClick={() => setShowTypePicker(!showTypePicker)}
+   250→                className="mb-3 flex w-full items-center gap-2 rounded-lg border border-border bg-card p-2.5 text-left text-sm font-medium hover:border-foreground/20">
+   251→                {def && <def.icon className="h-4 w-4 shrink-0" />}
+   252→                <span className="flex-1 truncate">{def?.label}</span>
+   253→                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+   254→              </button>
+   255→
+   256→              {/* Type picker dropdown */}
+   257→              {showTypePicker && (
+   258→                <div className="mb-3 max-h-60 space-y-1 overflow-y-auto scroll-thin rounded-lg border border-border bg-background p-2">
+   259→                  <div className="relative mb-2">
+   260→                    <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+   261→                    <Input placeholder="Search…" value={typeSearch} onChange={(e) => setTypeSearch(e.target.value)} className="h-8 pl-7 text-xs" />
+   262→                  </div>
+   263→                  {filteredTypes.map((t) => (
+   264→                    <button key={t.id} onClick={() => { setSelectedType(t.id); setShowTypePicker(false) }}
+   265→                      className={cn('flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+   266→                        selectedType === t.id ? 'bg-foreground text-background' : 'hover:bg-accent')}>
+   267→                      <t.icon className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{t.label}</span>
+   268→                    </button>
+   269→                  ))}
+   270→                </div>
+   271→              )}
+   272→
+   273→              {/* Section nav */}
+   274→              <div className="space-y-0.5">
+   275→                {STUDIO_SECTIONS.map((s) => (
+   276→                  <button key={s.id} onClick={() => setActiveSection(s.id)}
+   277→                    className={cn('flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
+   278→                      activeSection === s.id ? 'bg-foreground text-background' : 'text-muted-foreground hover:bg-accent hover:text-foreground')}>
+   279→                    <s.icon className="h-4 w-4" />{s.label}
+   280→                  </button>
+   281→                ))}
+   282→              </div>
+   283→            </div>
+   284→          </div>
+   285→
+   286→          {/* CENTER — preview */}
+   287→          <div className="flex flex-1 flex-col items-center justify-center bg-muted/10 p-6">
+   288→            <div className="qr-frame p-4 shadow-md">
+   289→              <QrPreview payload={payload || ' '} design={design} logoDataUrl={logoDataUrl} size={240} />
+   290→            </div>
+   291→            <p className="mt-4 text-sm font-medium">{title}</p>
+   292→            <p className="text-xs text-muted-foreground">
+   293→              {def?.label} · {design.dotStyle}{design.gradientType !== 'none' ? ' · gradient' : ''}
+   294→              {isDynamic && ' · dynamic'}
+   295→            </p>
+   296→            {/* Mobile: section tabs (since the left sidebar is hidden on mobile) */}
+   297→            <div className="mt-4 flex w-full max-w-xs gap-1 rounded-lg border border-border bg-card p-1 sm:hidden">
+   298→              {STUDIO_SECTIONS.map((s) => (
+   299→                <button key={s.id} onClick={() => setActiveSection(s.id)}
+   300→                  className={cn('flex-1 rounded-md py-1.5 text-xs font-medium',
+   301→                    activeSection === s.id ? 'bg-foreground text-background' : 'text-muted-foreground')}>
+   302→                  {s.label}
+   303→                </button>
+   304→              ))}
+   305→            </div>
+   306→          </div>
+   307→
+   308→          {/* RIGHT — properties */}
+   309→          <div className="w-72 shrink-0 overflow-y-auto scroll-thin border-l border-border p-4">
+   310→            {activeSection === 'content' && (
+   311→              <div className="space-y-4">
+   312→                <h3 className="text-sm font-semibold">Content</h3>
+   313→                {/* Mobile type picker (the left sidebar is hidden on mobile) */}
+   314→                <div className="sm:hidden">
+   315→                  <Label className="mb-1.5 block text-xs font-medium">QR Type</Label>
+   316→                  <Select value={selectedType} onValueChange={(v) => setSelectedType(v as QrTypeId)}>
+   317→                    <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+   318→                    <SelectContent>
+   319→                      {QR_TYPES.map((t) => <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>)}
+   320→                    </SelectContent>
+   321→                  </Select>
+   322→                </div>
+   323→                <div className="space-y-2">
+   324→                  <Label className="text-xs font-medium">Title *</Label>
+   325→                  <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="My QR Code" className="h-9" />
+   326→                </div>
+   327→                <Separator />
+   328→                {/* Dynamic QR toggle — the key Phase 1 fix. Enables scan tracking,
+   329→                    analytics, password protection, expiry, max scans, redirect rules,
+   330→                    and editable destination. Plan-gated: all plans have a dynamic-QR
+   331→                    allowance (free: 10, starter: 50, pro: 250, business: unlimited). */}
+   332→                <div className={cn(
+   333→                  'rounded-lg border p-3 transition-colors',
+   334→                  isDynamic ? 'border-brand/40 bg-brand-muted/40' : 'border-border bg-muted/30'
+   335→                )}>
+   336→                  <div className="flex items-start justify-between gap-3">
+   337→                    <div className="min-w-0">
+   338→                      <div className="flex items-center gap-1.5">
+   339→                        <Sparkles className="h-3.5 w-3.5 text-brand" />
+   340→                        <p className="text-xs font-semibold">Dynamic QR Code</p>
+   341→                      </div>
+   342→                      <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+   343→                        {isDynamic
+   344→                          ? 'Track scans, edit the destination later, add password protection, expiry & redirect rules.'
+   345→                          : 'Enable for scan tracking, analytics & editable destination.'}
+   346→                      </p>
+   347→                      <p className="mt-1 text-[11px] text-muted-foreground">
+   348→                        Plan limit: {dynamicLimit === null ? '∞ unlimited' : dynamicLimit} dynamic codes
+   349→                      </p>
+   350→                    </div>
+   351→                    <Switch checked={isDynamic} onCheckedChange={setIsDynamic} aria-label="Toggle dynamic QR" />
+   352→                  </div>
+   353→                </div>
+   354→                <Separator />
+   355→                {def?.fields.map((f) => <StudioField key={f.key} field={f} values={formValues} onChange={handleFieldChange} />)}
+   356→              </div>
+   357→            )}
+   358→
+   359→            {activeSection === 'design' && (
+   360→              <div className="space-y-4">
+   361→                <div className="flex items-center justify-between">
+   362→                  <h3 className="text-sm font-semibold">Design</h3>
+   363→                  <Button
+   364→                    size="sm"
+   365→                    variant="ghost"
+   366→                    className="h-7 gap-1 px-2 text-xs"
+   367→                    onClick={() => { setDesign(randomDesign()); toast.success('Randomized!') }}
+   368→                    title="Randomize design"
+   369→                  >
+   370→                    <Shuffle className="h-3.5 w-3.5" /> Random
+   371→                  </Button>
+   372→                </div>
+   373→
+   374→                {/* One-click themes */}
+   375→                <div>
+   376→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Themes</p>
+   377→                  <div className="grid grid-cols-3 gap-1.5">
+   378→                    {DESIGN_THEMES.map((th) => (
+   379→                      <button
+   380→                        key={th.name}
+   381→                        onClick={() => updateDesign(th.design)}
+   382→                        className="rounded-lg border border-border px-2 py-2 text-[11px] font-medium hover:border-foreground/30 hover:bg-accent"
+   383→                      >
+   384→                        {th.name}
+   385→                      </button>
+   386→                    ))}
+   387→                  </div>
+   388→                </div>
+   389→
+   390→                <Separator />
+   391→
+   392→                {/* Foreground color */}
+   393→                <div>
+   394→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Foreground</p>
+   395→                  <div className="flex flex-wrap gap-1.5">
+   396→                    {COLOR_PRESETS.map((c) => (
+   397→                      <button key={c} onClick={() => updateDesign({ fgColor: c })}
+   398→                        className={cn('h-7 w-7 rounded-full border-2', design.fgColor === c ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}
+   399→                        style={{ backgroundColor: c }} aria-label={c} />
+   400→                    ))}
+   401→                    <input type="color" value={design.fgColor} onChange={(e) => updateDesign({ fgColor: e.target.value })} className="h-7 w-7 cursor-pointer rounded border border-border" aria-label="Custom foreground" />
+   402→                  </div>
+   403→                </div>
+   404→
+   405→                {/* Background color */}
+   406→                <div>
+   407→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Background</p>
+   408→                  <div className="flex flex-wrap gap-1.5">
+   409→                    {BG_PRESETS.map((c) => (
+   410→                      <button key={c} onClick={() => updateDesign({ bgColor: c, transparentBg: false })}
+   411→                        className={cn('h-7 w-7 rounded-full border-2', design.bgColor === c && !design.transparentBg ? 'border-foreground ring-2 ring-foreground/20' : 'border-border')}
+   412→                        style={{ backgroundColor: c }} aria-label={c} />
+   413→                    ))}
+   414→                    <input type="color" value={design.bgColor} onChange={(e) => updateDesign({ bgColor: e.target.value, transparentBg: false })} className="h-7 w-7 cursor-pointer rounded border border-border" aria-label="Custom background" />
+   415→                  </div>
+   416→                  <div className="mt-2 flex items-center gap-2">
+   417→                    <Checkbox id="studio-bg" checked={design.transparentBg} onCheckedChange={(c) => updateDesign({ transparentBg: c === true })} />
+   418→                    <Label htmlFor="studio-bg" className="text-xs">Transparent background</Label>
+   419→                  </div>
+   420→                </div>
+   421→
+   422→                <Separator />
+   423→
+   424→                {/* Gradient — the big new customization piece */}
+   425→                <div>
+   426→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Gradient fill</p>
+   427→                  <div className="mb-2 grid grid-cols-3 gap-1.5">
+   428→                    {(['none', 'linear', 'radial'] as const).map((g) => (
+   429→                      <button key={g} onClick={() => updateDesign({ gradientType: g })}
+   430→                        className={cn('rounded-md border px-2 py-1.5 text-xs font-medium capitalize',
+   431→                          design.gradientType === g ? 'border-foreground bg-foreground text-background' : 'border-border')}>
+   432→                        {g}
+   433→                      </button>
+   434→                    ))}
+   435→                  </div>
+   436→                  {design.gradientType !== 'none' && (
+   437→                    <div className="space-y-2.5 rounded-lg bg-muted/30 p-2.5">
+   438→                      <div className="flex flex-wrap gap-1.5">
+   439→                        {GRADIENT_PRESETS.map((gp) => (
+   440→                          <button
+   441→                            key={gp.name}
+   442→                            onClick={() => updateDesign({ gradientStart: gp.start, gradientEnd: gp.end })}
+   443→                            className="h-6 w-6 rounded-full border-2 border-border"
+   444→                            style={{ background: `linear-gradient(135deg, ${gp.start}, ${gp.end})` }}
+   445→                            title={gp.name}
+   446→                            aria-label={`Gradient ${gp.name}`}
+   447→                          />
+   448→                        ))}
+   449→                      </div>
+   450→                      <div className="grid grid-cols-2 gap-2">
+   451→                        <div>
+   452→                          <p className="mb-1 text-[11px] text-muted-foreground">Start</p>
+   453→                          <input type="color" value={design.gradientStart} onChange={(e) => updateDesign({ gradientStart: e.target.value })} className="h-8 w-full cursor-pointer rounded border border-border bg-transparent p-0" />
+   454→                        </div>
+   455→                        <div>
+   456→                          <p className="mb-1 text-[11px] text-muted-foreground">End</p>
+   457→                          <input type="color" value={design.gradientEnd} onChange={(e) => updateDesign({ gradientEnd: e.target.value })} className="h-8 w-full cursor-pointer rounded border border-border bg-transparent p-0" />
+   458→                        </div>
+   459→                      </div>
+   460→                      {design.gradientType === 'linear' && (
+   461→                        <div>
+   462→                          <div className="mb-1 flex justify-between text-[11px]"><span className="text-muted-foreground">Angle</span><span className="font-mono">{design.gradientAngle}°</span></div>
+   463→                          <Slider value={[design.gradientAngle]} min={0} max={360} onValueChange={(v) => updateDesign({ gradientAngle: v[0] })} />
+   464→                        </div>
+   465→                      )}
+   466→                    </div>
+   467→                  )}
+   468→                </div>
+   469→
+   470→                <Separator />
+   471→
+   472→                {/* Dot style */}
+   473→                <div>
+   474→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Dot Style</p>
+   475→                  <div className="grid grid-cols-3 gap-1.5">
+   476→                    {DOT_STYLES.map((s) => (
+   477→                      <button key={s.id} onClick={() => updateDesign({ dotStyle: s.id })}
+   478→                        className={cn('rounded-md border px-2 py-1.5 text-xs font-medium', design.dotStyle === s.id ? 'border-foreground bg-foreground text-background' : 'border-border')}>
+   479→                        {s.label}
+   480→                      </button>
+   481→                    ))}
+   482→                  </div>
+   483→                </div>
+   484→
+   485→                {/* Eye style */}
+   486→                <div>
+   487→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Eye Style</p>
+   488→                  <div className="grid grid-cols-3 gap-1.5">
+   489→                    {EYE_STYLES.map((s) => (
+   490→                      <button key={s.id} onClick={() => updateDesign({ eyeStyle: s.id })}
+   491→                        className={cn('rounded-md border px-2 py-1.5 text-xs font-medium', design.eyeStyle === s.id ? 'border-foreground bg-foreground text-background' : 'border-border')}>
+   492→                        {s.label}
+   493→                      </button>
+   494→                    ))}
+   495→                  </div>
+   496→                </div>
+   497→
+   498→                {/* Error correction */}
+   499→                <div>
+   500→                  <p className="mb-2 text-xs font-medium text-muted-foreground">Error Correction</p>
+   501→                  <div className="grid grid-cols-4 gap-1.5">
+   502→                    {EC_LEVELS.map((e) => (
+   503→                      <button key={e.id} onClick={() => updateDesign({ errorCorrection: e.id })}
+   504→                        className={cn('rounded-md border px-2 py-1.5 text-xs font-bold', design.errorCorrection === e.id ? 'border-foreground bg-foreground text-background' : 'border-border')}>
+   505→                        {e.label}
+   506→                      </button>
+   507→                    ))}
+   508→                  </div>
+   509→                  <p className="mt-1.5 text-[11px] text-muted-foreground">{EC_LEVELS.find((e) => e.id === design.errorCorrection)?.helper}</p>
+   510→                </div>
+   511→
+   512→                {/* Output size */}
+   513→                <div>
+   514→                  <div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Output size</span><span className="font-mono">{design.outputSize}px</span></div>
+   515→                  <Select value={String(design.outputSize)} onValueChange={(v) => updateDesign({ outputSize: Number(v) as QrDesign['outputSize'] })}>
+   516→                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+   517→                    <SelectContent>
+   518→                      <SelectItem value="256">256px</SelectItem>
+   519→                      <SelectItem value="512">512px</SelectItem>
+   520→                      <SelectItem value="1024">1024px</SelectItem>
+   521→                      <SelectItem value="2048">2048px</SelectItem>
+   522→                    </SelectContent>
+   523→                  </Select>
+   524→                </div>
+   525→              </div>
+   526→            )}
+   527→
+   528→            {activeSection === 'logo' && (
+   529→              <div className="space-y-4">
+   530→                <h3 className="text-sm font-semibold">Logo</h3>
+   531→                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+   532→                {logoDataUrl ? (
+   533→                  <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+   534→                    <img src={logoDataUrl} alt="Logo" className="h-12 w-12 rounded object-contain" />
+   535→                    <span className="flex-1 text-xs text-muted-foreground">Logo uploaded</span>
+   536→                    <Button size="icon" variant="ghost" onClick={() => setLogoDataUrl(null)}><X className="h-4 w-4" /></Button>
+   537→                  </div>
+   538→                ) : (
+   539→                  <button onClick={() => fileInputRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-border p-5 text-xs text-muted-foreground hover:border-foreground/30">
+   540→                    <ImageIcon className="h-6 w-6" />Upload logo (PNG/SVG, ≤1MB)
+   541→                  </button>
+   542→                )}
+   543→                {logoDataUrl && (
+   544→                  <>
+   545→                    <div><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Size</span><span className="font-mono">{design.logoSize}%</span></div><Slider value={[design.logoSize]} min={10} max={40} onValueChange={(v) => updateDesign({ logoSize: v[0] })} /></div>
+   546→                    <div><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Padding</span><span className="font-mono">{design.logoPadding}px</span></div><Slider value={[design.logoPadding]} min={0} max={20} onValueChange={(v) => updateDesign({ logoPadding: v[0] })} /></div>
+   547→                  </>
+   548→                )}
+   549→                <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+   550→                  <div className="mb-1 flex items-center gap-1.5 font-medium text-foreground"><AlertCircle className="h-3.5 w-3.5" /> Tip</div>
+   551→                  Use error correction Q or H with a logo so the QR stays scannable.
+   552→                </div>
+   553→              </div>
+   554→            )}
+   555→
+   556→            {activeSection === 'download' && (
+   557→              <div className="space-y-4">
+   558→                <h3 className="text-sm font-semibold">Download</h3>
+   559→                <Button onClick={() => handleDownload('png')} disabled={downloading} variant="outline" className="w-full"><Download className="h-4 w-4" /> PNG ({design.outputSize}px)</Button>
+   560→                <Button onClick={() => handleDownload('svg')} disabled={downloading} variant="outline" className="w-full"><Download className="h-4 w-4" /> SVG (Vector)</Button>
+   561→                <Separator />
+   562→                {user ? (
+   563→                  <>
+   564→                    <Button onClick={handleSave} disabled={saving} className="w-full bg-brand text-brand-foreground hover:bg-brand/90">
+   565→                      <Save className="h-4 w-4" /> {saving ? 'Saving…' : isDynamic ? 'Save Dynamic QR' : 'Save to Library'}
+   566→                    </Button>
+   567→                    {isDynamic && (
+   568→                      <p className="text-center text-[11px] text-muted-foreground">
+   569→                        Scans will be tracked with a short URL like<br />
+   570→                        <code className="rounded bg-muted px-1 py-0.5 text-[10px]">createanqrcode.com/q/…</code>
+   571→                      </p>
+   572→                    )}
+   573→                  </>
+   574→                ) : (
+   575→                  <p className="text-center text-xs text-muted-foreground">Sign up to save & track your QR codes.</p>
+   576→                )}
+   577→              </div>
+   578→            )}
+   579→          </div>
+   580→        </div>
+   581→      </SheetContent>
+   582→    </Sheet>
+   583→  )
+   584→}
+   585→
+   586→// ── Field renderers (kept identical to the old dashboard studio) ──────────
+   587→
+   588→function StudioField({ field, values, onChange }: { field: QrTypeField; values: Record<string, string | boolean>; onChange: (k: string, v: string | boolean) => void }) {
+   589→  if (field.showIf && !field.showIf(values)) return null
+   590→  const value = values[field.key]
+   591→  const strVal = typeof value === 'boolean' ? '' : value
+   592→
+   593→  const isFileType = field.label.toLowerCase().includes('pdf') || field.label.toLowerCase().includes('image') || field.label.toLowerCase().includes('video') || field.label.toLowerCase().includes('ebook') || field.label.toLowerCase().includes('file') || field.label.toLowerCase().includes('gallery')
+   594→
+   595→  if (isFileType) {
+   596→    return <FileUploadField field={field} value={strVal} onChange={onChange} />
+   597→  }
+   598→
+   599→  if (field.type === 'checkbox') {
+   600→    return <div className="flex items-center gap-2"><Checkbox id={field.key} checked={!!value} onCheckedChange={(c) => onChange(field.key, c === true)} /><Label htmlFor={field.key} className="text-xs">{field.label}</Label></div>
+   601→  }
+   602→  if (field.type === 'textarea') {
+   603→    return <div className="space-y-1.5"><Label className="text-xs font-medium">{field.label}{field.required && <span className="text-destructive"> *</span>}</Label><textarea id={field.key} value={strVal} onChange={(e) => onChange(field.key, e.target.value)} placeholder={field.placeholder} rows={3} className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm" /></div>
+   604→  }
+   605→  if (field.type === 'select') {
+   606→    return <div className="space-y-1.5"><Label className="text-xs font-medium">{field.label}{field.required && <span className="text-destructive"> *</span>}</Label><Select value={strVal || field.defaultValue as string} onValueChange={(v) => onChange(field.key, v)}><SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger><SelectContent>{field.options?.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent></Select></div>
+   607→  }
+   608→  return <div className="space-y-1.5"><Label className="text-xs font-medium">{field.label}{field.required && <span className="text-destructive"> *</span>}</Label><Input id={field.key} type={field.type} value={strVal} onChange={(e) => onChange(field.key, e.target.value)} placeholder={field.placeholder} className="h-9" />{field.helper && <p className="text-[11px] text-muted-foreground">{field.helper}</p>}</div>
+   609→}
+   610→
+   611→function FileUploadField({ field, value, onChange }: { field: QrTypeField; value: string; onChange: (k: string, v: string | boolean) => void }) {
+   612→  const [uploading, setUploading] = useState(false)
+   613→  const fileRef = useRef<HTMLInputElement>(null)
+   614→  const handleUpload = async (file: File) => {
+   615→    if (file.size > 10 * 1024 * 1024) { toast.error('Max 10MB'); return }
+   616→    setUploading(true)
+   617→    try {
+   618→      const fd = new FormData(); fd.append('file', file)
+   619→      const res = await fetch('/api/upload', { method: 'POST', body: fd })
+   620→      if (!res.ok) throw new Error('Upload failed')
+   621→      const data = await res.json(); onChange(field.key, data.url); toast.success(`Uploaded: ${file.name}`)
+   622→    } catch { toast.error('Upload failed') } finally { setUploading(false) }
+   623→  }
+   624→  return (
+   625→    <div className="space-y-1.5">
+   626→      <Label className="text-xs font-medium">{field.label}{field.required && <span className="text-destructive"> *</span>}</Label>
+   627→      <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f) }} />
+   628→      <div className="flex gap-1.5">
+   629→        <Input value={value} onChange={(e) => onChange(field.key, e.target.value)} placeholder={field.placeholder || 'Upload or paste URL'} className="h-9 flex-1" />
+   630→        <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()} className="h-9 px-2">
+   631→          {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+   632→        </Button>
+   633→      </div>
+   634→      {value && <div className="flex items-center gap-1.5 rounded border border-border bg-muted/30 p-1.5 text-[11px]"><FileText className="h-3 w-3 text-muted-foreground shrink-0" /><span className="truncate text-muted-foreground">{value}</span><button onClick={() => onChange(field.key, '')} className="shrink-0"><X className="h-3 w-3" /></button></div>}
+   635→    </div>
+   636→  )
+   637→}
+   638→
+   639→export default QrStudio
+   640→

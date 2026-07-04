@@ -1,0 +1,902 @@
+     1→     1→# CreateAnQRCode — Full Vibe Coding Plan
+     2→     2→
+     3→     3→> **Companion to:** `CreateAnQRCode-VibeSpec.md`
+     4→     4→> **Stack:** Next.js 16 · Tailwind v4 · shadcn/ui · Prisma · Supabase
+     5→     5→> **Aesthetic:** Pure white + black monochrome (Apple/Linear/Vercel minimalism)
+     6→     6→> **Total sessions:** 27 (≈60-80 hours of agent time, ~3-4 weeks part-time)
+     7→     7→
+     8→     8→---
+     9→     9→
+    10→    10→## How to Use This Plan
+    11→    11→
+    12→    12→**One session at a time.** Each session is a self-contained unit with:
+    13→    13→
+    14→    14→1. **Goal** — what gets built
+    15→    15→2. **Time estimate** — agent + review time
+    16→    16→3. **Dependencies** — sessions that must be done first
+    17→    17→4. **Files** — what gets created/modified
+    18→    18→5. **Paste-ready prompt** — copy directly into Cursor / Claude / Codex
+    19→    19→6. **Acceptance checklist** — definition of done
+    20→    20→7. **Pitfalls** — what usually goes wrong
+    21→    21→
+    22→    22→**Rules:**
+    23→    23→
+    24→    24→- Don't skip sessions. Dependencies are real.
+    25→    25→- After each session: run, click through, verify acceptance checklist, commit.
+    26→    26→- If the agent produces broken output, paste the failure back and ask for a fix — don't move on with broken foundation.
+    27→    27→- Keep the spec file (`CreateAnQRCode-VibeSpec.md`) in the agent's context for every session. Reference it explicitly in each prompt.
+    28→    28→- All work lives under `/home/z/my-project/`. Scripts in `/home/z/my-project/scripts/`. Final code in `/home/z/my-project/createanqrcode/`.
+    29→    29→
+    30→    30→---
+    31→    31→
+    32→    32→## Session Map (Overview)
+    33→    33→
+    34→    34→| # | Session | Est. | Deps | Output |
+    35→    35→|---|---|---|---|---|
+    36→    36→| 0 | Project init | 1h | — | Next.js app + Tailwind + shadcn + fonts |
+    37→    37→| 1 | Design system foundation | 2h | 0 | Tokens, ThemeProvider, base primitives |
+    38→    38→| 2 | Marketing shell | 1.5h | 1 | Nav, footer, theme toggle |
+    39→    39→| 3 | Homepage | 2h | 2 | Hero + 9 sections, fully static |
+    40→    40→| 4 | Public QR generator (URL only) | 3h | 1 | /create, 3-panel, client-side QR render, downloads |
+    41→    41→| 5 | Customizer full | 3h | 4 | Colors, dots, eyes, logo, EC, output, gradient |
+    42→    42→| 6 | Phase 1 QR type forms (10 types) | 3h | 4 | URL, Text, Email, Phone, SMS, WhatsApp, WiFi, vCard, UPI, Location |
+    43→    43→| 7 | Auth (signup, login, reset, verify) | 4h | 1 | All auth flows + Supabase + Turnstile |
+    44→    44→| 8 | App shell (sidebar, topbar) | 2h | 1, 7 | DashboardShell, protected routes |
+    45→    45→| 9 | Dashboard | 2h | 8 | Stats, quick create, recent grid |
+    46→    46→| 10 | QR Library | 3h | 8 | Filters, grid/list, search, pagination |
+    47→    47→| 11 | QR Detail page | 2h | 10 | Detail view + edit mode |
+    48→    48→| 12 | QR actions (duplicate, archive, trash) | 2h | 11 | Card menu + bulk actions |
+    49→    49→| 13 | Folders | 1.5h | 10 | Folder CRUD + assign + filter |
+    50→    50→| 14 | Tags | 1h | 10 | Free-form tags + filter |
+    51→    51→| 15 | Dynamic QR — short URL + redirector | 3h | 11 | Mode toggle, /q/[code], scan logging |
+    52→    52→| 16 | Dynamic QR — password gate + expiry + cap | 2h | 15 | Gate page, expiry landing, scan cap |
+    53→    53→| 17 | Redirect rules (Pro+) | 2h | 15 | Country/device rules, drag-reorder |
+    54→    54→| 18 | Analytics — basic (Starter) | 3h | 15 | Stats, line chart, country bars, donuts |
+    55→    55→| 19 | Analytics — realtime + heatmap | 2h | 18 | Live feed (Supabase Realtime) + 7×24 grid |
+    56→    56→| 20 | Templates | 2h | 5 | 20 presets + save-as-template |
+    57→    57→| 21 | Bulk generation wizard | 3h | 6 | 5-step wizard, CSV parse, ZIP |
+    58→    58→| 22 | Billing (Razorpay + Paddle) | 4h | 8 | Plans, trials, webhooks, invoices |
+    59→    59→| 23 | Settings (5 sections) | 2h | 7 | Profile, preferences, notifications, security, data |
+    60→    60→| 24 | REST API v1 | 3h | 11 | All endpoints + API key management |
+    61→    61→| 25 | Phase 2 QR types (10 types) | 2h | 6 | Instagram, FB, X, YT, LinkedIn, Spotify, PDF, Maps, Calendar, WA Business |
+    62→    62→| 26 | Mobile + accessibility polish | 3h | all | 375px audit, keyboard nav, screen reader |
+    63→    63→| 27 | Performance + deploy | 2h | all | Lighthouse 95+, Vercel deploy |
+    64→    64→
+    65→    65→**Total: ~63 hours agent time + ~20 hours review = ~83 hours**
+    66→    66→
+    67→    67→---
+    68→    68→
+    69→    69→## Session 0 — Project Init
+    70→    70→
+    71→    71→**Goal:** Empty Next.js 16 app with Tailwind v4, shadcn/ui, fonts, and the design tokens installed.
+    72→    72→
+    73→    73→**Time:** 1 hour
+    74→    74→**Dependencies:** None
+    75→    75→**Files:** `package.json`, `tailwind.config.ts`, `app/globals.css`, `app/layout.tsx`, `next.config.ts`
+    76→    76→
+    77→    77→### Paste-Ready Prompt
+    78→    78→
+    79→    79→```
+    80→    80→Initialize a new Next.js 16 project at /home/z/my-project/createanqrcode with the following:
+    81→    81→
+    82→    82→STACK:
+    83→    83→- Next.js 16 (App Router, TypeScript, strict mode)
+    84→    84→- Tailwind CSS v4 (CSS-first config using @theme directive, NO tailwind.config.ts)
+    85→    85→- shadcn/ui (New York style, Zinc base)
+    86→    86→- Prisma + @prisma/client
+    87→    87→- next-themes
+    88→    88→- lucide-react
+    89→    89→- qrcode.react
+    90→    90→- recharts
+    91→    91→- @supabase/ssr + @supabase/supabase-js
+    92→    92→- react-hook-form + zod + @hookform/resolvers
+    93→    93→- sonner (for toasts)
+    94→    94→- cloudflare-turnstile
+    95→    95→
+    96→    96→FONTS (download woff2 files to public/fonts/):
+    97→    97→- Inter (400, 500, 600, 700)
+    98→    98→- JetBrains Mono (400, 500)
+    99→    99→
+   100→   100→FILES TO CREATE:
+   101→   101→1. app/globals.css — Tailwind v4 import + @theme block defining every token from the design system in CreateAnQRCode-VibeSpec.md Section 1.1
+   102→   102→2. app/layout.tsx — root layout with font loading (next/font/local for Inter + JetBrains Mono), metadata, ThemeProvider from next-themes
+   103→   103→3. next.config.ts — strict, image optimization on
+   104→   104→4. tsconfig.json — paths alias @/* → ./*
+   105→   105→5. .env.example — DATABASE_URL, SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, TURNSTILE_SITE_KEY, TURNSTILE_SECRET_KEY, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, PADDLE_API_KEY, NEXT_PUBLIC_APP_URL
+   106→   106→6. README.md — bare minimum setup instructions
+   107→   107→
+   108→   108→ACCEPTANCE:
+   109→   109→- Running `npm run dev` shows a blank page with no console errors
+   110→   110→- Tailwind classes work (test: add a <div className="bg-black text-white p-4">Hello</div> to app/page.tsx)
+   111→   111→- next-themes works (test: add a button that toggles theme)
+   112→   112→- TypeScript: npm run typecheck passes with zero errors
+   113→   113→- ESLint: npm run lint passes
+   114→   114→
+   115→   115→DO NOT build any features. This session is foundation only.
+   116→   116→```
+   117→   117→
+   118→   118→### Acceptance Checklist
+   119→   119→
+   120→   120→- [ ] `npm run dev` works at localhost:3000
+   121→   121→- [ ] No console errors
+   122→   122→- [ ] Tailwind classes apply
+   123→   123→- [ ] Theme toggle works (light/dark/system)
+   124→   124→- [ ] Inter font loads (check Network tab)
+   125→   125→- [ ] JetBrains Mono loads
+   126→   126→- [ ] `npm run typecheck` clean
+   127→   127→- [ ] `npm run lint` clean
+   128→   128→- [ ] `.env.example` exists with all keys
+   129→   129→
+   130→   130→### Pitfalls
+   131→   131→
+   132→   132→- Tailwind v4 has breaking changes from v3 — do NOT use `tailwind.config.ts`. Use `@theme` in CSS.
+   133→   133→- shadcn/ui init may default to Tailwind v3 — explicitly select v4 during `npx shadcn@latest init`.
+   134→   134→- Inter requires the `ss01` and `cv11` OpenType features for proper rendering.
+   135→   135→
+   136→   136→---
+   137→   137→
+   138→   138→## Session 1 — Design System Foundation
+   139→   139→
+   140→   140→**Goal:** All design tokens, base components, and reusable primitives from the spec are in place.
+   141→   141→
+   142→   142→**Time:** 2 hours
+   143→   143→**Dependencies:** Session 0
+   144→   144→**Files:**
+   145→   145→- `app/globals.css` (extend)
+   146→   146→- `components/ui/*` (shadcn primitives)
+   147→   147→- `app/_components/theme-toggle.tsx`
+   148→   148→- `app/_components/theme-provider.tsx`
+   149→   149→- `lib/utils.ts` (cn helper)
+   150→   150→
+   151→   151→### Paste-Ready Prompt
+   152→   152→
+   153→   153→```
+   154→   154→Build the design system foundation for CreateAnQRCode. Reference: CreateAnQRCode-VibeSpec.md Sections 1 (Design System) and 2 (Component Inventory).
+   155→   155→
+   156→   156→TASKS:
+   157→   157→
+   158→   158→1. Install ALL shadcn/ui components listed in spec Section 2.1:
+   159→   159→   button input label textarea select switch slider tabs dialog sheet dropdown-menu command popover tooltip card badge avatar skeleton progress sonner accordion calendar separator checkbox
+   160→   160→
+   161→   161→2. Customize the shadcn button variants in components/ui/button.tsx to add:
+   162→   162→   - default: bg-black text-white hover:bg-black/90 (light) / bg-white text-black hover:bg-white/90 (dark)
+   163→   163→   - outline: border border-neutral-200 dark:border-neutral-800 bg-transparent hover:bg-neutral-50 dark:hover:bg-neutral-900
+   164→   164→   - ghost: hover:bg-neutral-100 dark:hover:bg-neutral-900
+   165→   165→   - secondary: bg-neutral-100 dark:bg-neutral-900
+   166→   166→   - Sizes: sm (h-8), default (h-10), lg (h-12), icon (h-10 w-10)
+   167→   167→   - All buttons: rounded-md, transition-all 150ms ease-out
+   168→   168→
+   169→   169→3. Create app/_components/theme-provider.tsx:
+   170→   170→   - Wrap next-themes ThemeProvider
+   171→   171→   - attribute="class", defaultTheme="system", enableSystem, disableTransitionOnChange
+   172→   172→
+   173→   173→4. Create app/_components/theme-toggle.tsx:
+   174→   174→   - Cycles: light → dark → system
+   175→   175→   - Uses Sun / Moon / Monitor icons from lucide-react
+   176→   176→   - aria-label updates based on current theme
+   177→   177→   - 150ms transition between icons
+   178→   178→
+   179→   179→5. Update app/globals.css with the full @theme block from spec Section 1.1 — every color, font, radius, motion token. Also add:
+   180→   180→   - Base body styles (antialiased, font-feature-settings: "ss01", "cv11")
+   181→   181→   - focus-visible ring (2px black ring + 2px white offset in light, inverse in dark)
+   182→   182→   - @media (prefers-reduced-motion: reduce) override
+   183→   183→   - Scrollbar styling (thin, neutral-300 thumb)
+   184→   184→
+   185→   185→6. Create lib/utils.ts:
+   186→   186→   - cn() helper (clsx + tailwind-merge)
+   187→   187→   - formatDate(date, format) — supports DD/MM/YYYY and MM/DD/YYYY
+   188→   188→   - formatRelativeTime(date) — "2 minutes ago", "1 hour ago", etc.
+   189→   189→   - slugify(str)
+   190→   190→   - truncate(str, length)
+   191→   191→
+   192→   192→7. Create app/_components/empty-state.tsx:
+   193→   193→   Props: icon (lucide icon), title, description, action (ReactNode)
+   194→   194→   Centered layout, max-w-sm, 48px icon in neutral-400.
+   195→   195→
+   196→   196→8. Create app/_components/error-state.tsx:
+   197→   197→   Props: title, description, onRetry
+   198→   198→   Same shape as empty-state but with AlertCircle icon and "Try again" button.
+   199→   199→
+   200→   200→9. Create app/_components/status-badge.tsx:
+   201→   201→   Props: status ("active" | "paused" | "expired" | "archived")
+   202→   202→   Per spec Section 1.8 — shape-based, not color:
+   203→   203→   - active: filled black/white dot + "Active"
+   204→   204→   - paused: pause icon + "Paused"
+   205→   205→   - expired: filled square + "Expired"
+   206→   206→   - archived: archive icon + "Archived"
+   207→   207→
+   208→   208→10. Create a storybook-style preview page at app/_dev/preview/page.tsx that renders every component above in all states. This is for visual verification only — it will be deleted before deploy.
+   209→   209→
+   210→   210→ACCEPTANCE:
+   211→   211→- /_dev/preview shows all components in light and dark mode, looking crisp and monochrome
+   212→   212→- focus-visible rings appear on Tab navigation
+   213→   213→- Theme toggle works on every page
+   214→   214→- No color anywhere except inside the Google "G" logo placeholder
+   215→   215→- npm run typecheck clean
+   216→   216→```
+   217→   217→
+   218→   218→### Acceptance Checklist
+   219→   219→
+   220→   220→- [ ] All shadcn primitives installed
+   221→   221→- [ ] Button variants match spec exactly
+   222→   222→- [ ] Theme toggle cycles 3 modes
+   223→   223→- [ ] `/_dev/preview` page renders all components
+   224→   224→- [ ] Focus rings visible in both themes
+   225→   225→- [ ] Scrollbars styled
+   226→   226→- [ ] Reduced motion respected
+   227→   227→
+   228→   228→### Pitfalls
+   229→   229→
+   230→   230→- shadcn button variants overwrite the defaults — make sure `default` is your primary black/white variant, not blue.
+   231→   231→- next-themes needs `suppressHydrationWarning` on `<html>` tag.
+   232→   232→- Tailwind v4 dark mode uses `.dark` class — make sure next-themes `attribute="class"` is set.
+   233→   233→
+   234→   234→---
+   235→   235→
+   236→   236→## Session 2 — Marketing Shell
+   237→   237→
+   238→   238→**Goal:** Marketing nav, footer, and the outer chrome for unauthenticated pages.
+   239→   239→
+   240→   240→**Time:** 1.5 hours
+   241→   241→**Dependencies:** Session 1
+   242→   242→**Files:**
+   243→   243→- `app/_components/marketing-nav.tsx`
+   244→   244→- `app/_components/footer.tsx`
+   245→   245→- `app/(marketing)/layout.tsx`
+   246→   246→
+   247→   247→### Paste-Ready Prompt
+   248→   248→
+   249→   249→```
+   250→   250→Build the marketing shell for CreateAnQRCode. Reference: CreateAnQRCode-VibeSpec.md Section 3.1.
+   251→   251→
+   252→   252→TASKS:
+   253→   253→
+   254→   254→1. Create app/_components/marketing-nav.tsx:
+   255→   255→   - Sticky top, height 64px
+   256→   256→   - backdrop-blur-sm bg-white/80 dark:bg-[#0A0A0A]/80
+   257→   257→   - border-b border-neutral-200 dark:border-neutral-800
+   258→   258→   - Left: Logo (filled black/white 8px square + "CreateAnQRCode" wordmark in font-semibold)
+   259→   259→   - Center/right (desktop): "Pricing", "Blog", "About" links (14px, text-neutral-600, hover:text-black with 150ms transition)
+   260→   260→   - Right: ThemeToggle, "Log in" (ghost button), "Get Started" (default black button)
+   261→   261→   - Mobile (≤768px): collapse links. Show only logo + theme toggle + hamburger (Sheet opens from right with nav links stacked)
+   262→   262→
+   263→   263→2. Create app/_components/footer.tsx:
+   264→   264→   - bg-neutral-50 dark:bg-neutral-950, border-t
+   265→   265→   - 4-column grid: Product (Features, Pricing, Templates, API), Company (About, Blog, Careers, Contact), Resources (Docs, Help, Changelog, Status), Legal (Privacy, Terms, Cookies)
+   266→   266→   - Bottom row: © 2025 CreateAnQRCode. Made in India.
+   267→   267→   - Mobile: stacked accordion
+   268→   268→
+   269→   269→3. Create app/(marketing)/layout.tsx:
+   270→   270→   - Wraps children with MarketingNav at top and Footer at bottom
+   271→   271→   - min-h-screen flex flex-col
+   272→   272→   - main flex-1
+   273→   273→
+   274→   274→4. Update app/(marketing)/page.tsx to render a placeholder hero ("Free QR codes. Forever." headline, no other sections yet). Just enough to verify the shell works.
+   275→   275→
+   276→   276→ACCEPTANCE:
+   277→   277→- Visiting / shows nav + hero placeholder + footer
+   278→   278→- Nav is sticky and blurs background on scroll
+   279→   279→- Mobile hamburger opens sheet from right
+   280→   280→- Theme toggle in nav works
+   281→   281→- All links are keyboard navigable
+   282→   282→- Logo is a Link to /
+   283→   283→```
+   284→   284→
+   285→   285→### Acceptance Checklist
+   286→   286→
+   287→   287→- [ ] Nav sticky with blur
+   288→   288→- [ ] Mobile hamburger opens sheet
+   289→   289→- [ ] Footer 4-col on desktop, stacked on mobile
+   290→   290→- [ ] All links keyboard navigable
+   291→   291→- [ ] Theme toggle in nav
+   292→   292→- [ ] No layout shift on scroll
+   293→   293→
+   294→   294→---
+   295→   295→
+   296→   296→## Session 3 — Homepage
+   297→   297→
+   298→   298→**Goal:** Full homepage with all 9 sections, fully static.
+   299→   299→
+   300→   300→**Time:** 2 hours
+   301→   301→**Dependencies:** Session 2
+   302→   302→**Files:**
+   303→   303→- `app/(marketing)/page.tsx` (rewrite)
+   304→   304→- `app/_components/hero.tsx`
+   305→   305→- `app/_components/sections/social-proof.tsx`
+   306→   306→- `app/_components/sections/features.tsx`
+   307→   307→- `app/_components/sections/qr-types-marquee.tsx`
+   308→   308→- `app/_components/sections/how-it-works.tsx`
+   309→   309→- `app/_components/sections/testimonials.tsx`
+   310→   310→- `app/_components/sections/pricing-preview.tsx`
+   311→   311→- `app/_components/sections/final-cta.tsx`
+   312→   312→
+   313→   313→### Paste-Ready Prompt
+   314→   314→
+   315→   315→```
+   316→   316→Build the full homepage for CreateAnQRCode. Reference: CreateAnQRCode-VibeSpec.md Section 3.1.
+   317→   317→
+   318→   318→The live generator section is a PLACEHOLDER for now (will be built in Session 4). All other sections are fully built.
+   319→   319→
+   320→   320→TASKS:
+   321→   321→
+   322→   322→1. app/_components/hero.tsx — Section 3.1 spec exactly:
+   323→   323→   - Badge: "No account needed" with filled dot
+   324→   324→   - H1: "Free QR codes. Forever." (56px, font-semibold, tracking -0.02em) + "No watermarks." in text-neutral-500
+   325→   325→   - Subtitle (18px, text-neutral-600, max-w-xl)
+   326→   326→   - Two buttons: primary "Create QR Code →" (Link to /create), outline "See all 43 types" (anchor to #types)
+   327→   327→   - min-h-[80vh] centered
+   328→   328→
+   329→   329→2. app/_components/sections/social-proof.tsx:
+   330→   330→   - 5 stats in a horizontal row, separated by vertical dividers
+   331→   331→   - Stats: "2M+ QR codes created", "190+ countries", "43 QR types", "100% free", "0 watermarks"
+   332→   332→   - Each stat: large number (32px font-semibold) + label (14px text-neutral-500)
+   333→   333→   - Mobile: 2-col grid
+   334→   334→
+   335→   335→3. app/_components/sections/features.tsx:
+   336→   336→   - 6 feature cards in 3-col grid (2-col tablet, 1-col mobile)
+   337→   337→   - Features: "Unlimited static codes", "Full customization", "Logo upload", "Dynamic codes (paid)", "Analytics (paid)", "REST API (paid)"
+   338→   338→   - Each card: lucide icon (32px) + title (font-medium) + description (14px text-neutral-500)
+   339→   339→   - Card style: p-6 border border-neutral-200 rounded-xl, hover:border-neutral-400 transition 150ms
+   340→   340→
+   341→   341→4. app/_components/sections/qr-types-marquee.tsx:
+   342→   342→   - Horizontal scrollable row of 43 QR type pills
+   343→   343→   - Each pill: icon + label, rounded-full, border, px-4 py-2
+   344→   344→   - Left/right scroll arrows appear on hover (desktop only)
+   345→   345→   - id="types" anchor target
+   346→   346→
+   347→   347→5. app/_components/sections/how-it-works.tsx:
+   348→   348→   - 3 steps in horizontal row, with connecting line
+   349→   349→   - Steps: "1. Pick a type", "2. Customize", "3. Download"
+   350→   350→   - Each: numbered circle (h-10 w-10 rounded-full border) + title + description
+   351→   351→
+   352→   352→6. app/_components/sections/testimonials.tsx:
+   353→   353→   - 3 quotes in 3-col grid
+   354→   354→   - Each: quote text + author name + role + avatar (use initials in a circle, no real photos)
+   355→   355→   - Subtle border, p-6
+   356→   356→
+   357→   357→7. app/_components/sections/pricing-preview.tsx:
+   358→   358→   - 3 plan cards: Free, Pro (popular, border-2), Business
+   359→   359→   - Per spec Section 3.8 PlanCard component
+   360→   360→   - "View full pricing" link below
+   361→   361→
+   362→   362→8. app/_components/sections/final-cta.tsx:
+   363→   363→   - Full-bleed section, py-20
+   364→   364→   - Inverted: bg-black text-white in light mode, bg-white text-black in dark mode
+   365→   365→   - Centered: "Start creating QR codes now" + subtext + "Get Started Free" button (inverted colors)
+   366→   366→
+   367→   367→9. Assemble all sections in app/(marketing)/page.tsx in order:
+   368→   368→   Hero → SocialProof → LiveGeneratorPlaceholder → Features → QrTypesMarquee → HowItWorks → Testimonials → PricingPreview → FinalCta
+   369→   369→
+   370→   370→The LiveGeneratorPlaceholder is a centered card with text "Live generator coming next" and a button to /create. Will be replaced in Session 4.
+   371→   371→
+   372→   372→ACCEPTANCE:
+   373→   373→- Homepage renders all 9 sections cleanly
+   374→   374→- Mobile responsive at 375px (everything stacks)
+   375→   375→- All CTAs link to correct routes (/create, /signup, #types)
+   376→   376→- No color anywhere
+   377→   377→- Lighthouse run on this page: 90+ performance, 100 accessibility
+   378→   378→```
+   379→   379→
+   380→   380→### Acceptance Checklist
+   381→   381→
+   382→   382→- [ ] All 9 sections present
+   383→   383→- [ ] Mobile responsive
+   384→   384→- [ ] All CTAs functional
+   385→   385→- [ ] Pricing cards show 3 plans with Pro highlighted
+   386→   386→- [ ] Final CTA inverts colors
+   387→   387→- [ ] Marquee scrolls horizontally
+   388→   388→
+   389→   389→---
+   390→   390→
+   391→   391→## Session 4 — Public QR Generator (URL Only)
+   392→   392→
+   393→   393→**Goal:** Working `/create` page with 3-panel layout. URL type only. Client-side QR rendering. PNG + SVG download.
+   394→   394→
+   395→   395→**Time:** 3 hours
+   396→   396→**Dependencies:** Session 1
+   397→   397→**Files:**
+   398→   398→- `app/create/page.tsx`
+   399→   399→- `app/create/layout.tsx`
+   400→   400→- `app/_components/qr/generator.tsx`
+   401→   401→- `app/_components/qr/type-selector.tsx`
+   402→   402→- `app/_components/qr/content-form.tsx`
+   403→   403→- `app/_components/qr/forms/url-form.tsx`
+   404→   404→- `app/_components/qr/preview.tsx`
+   405→   405→- `app/_components/qr/customizer.tsx` (empty shell — full version in Session 5)
+   406→   406→- `lib/qr-types.ts`
+   407→   407→- `lib/qr-payloads.ts`
+   408→   408→- `lib/qr-render.ts`
+   409→   409→
+   410→   410→### Paste-Ready Prompt
+   411→   411→
+   412→   412→```
+   413→   413→Build the public QR generator at /create. Reference: CreateAnQRCode-VibeSpec.md Sections 3.2, 2.2 (QR Generator components), and 6 Chapter 4 (Customizer).
+   414→   414→
+   415→   415→NO AUTH required for this page. Everything happens client-side.
+   416→   416→
+   417→   417→TASKS:
+   418→   418→
+   419→   419→1. lib/qr-types.ts — export QR_TYPES array per spec Section 6 Chapter 20.
+   420→   420→   For now, only define the URL type fully. The other 42 are placeholders with { id, label, icon, phase } only — forms come in Session 6.
+   421→   421→
+   422→   422→2. lib/qr-payloads.ts — buildUrlPayload(data) per spec.
+   423→   423→   - Trims whitespace
+   424→   424→   - Auto-prepends https:// if missing http(s)://
+   425→   425→   - Throws ZodError on invalid URL
+   426→   426→
+   427→   427→3. lib/qr-render.ts — wrapper around qrcode.react:
+   428→   428→   - renderQrSvg(payload, design) — returns SVG string
+   429→   429→   - renderQrPng(payload, design, size) — returns data URL
+   430→   430→   - downloadQr(payload, design, format, size) — triggers browser download
+   431→   431→   Design shape: { fg, bg, dot, eye, ec, size, logo?, gradient? }
+   432→   432→   For now, only fg, bg, ec are honored. Dot/eye/logo/gradient come in Session 5.
+   433→   433→
+   434→   434→4. app/_components/qr/type-selector.tsx:
+   435→   435→   - Left panel, 240px wide, border-r
+   436→   436→   - shadcn Command with search input at top
+   437→   437→   - Lists all 43 types from QR_TYPES (only URL is functional, others are disabled with "Coming soon" tooltip)
+   438→   438→   - Selected item: bg-neutral-100 dark:bg-neutral-900, font-medium
+   439→   439→
+   440→   440→5. app/_components/qr/forms/url-form.tsx:
+   441→   441→   - Single field: "Website URL" with placeholder "https://example.com"
+   442→   442→   - react-hook-form + zod validation
+   443→   443→   - Auto-prefix https:// on blur if missing
+   444→   444→   - Exposes value via onChange prop
+   445→   445→
+   446→   446→6. app/_components/qr/content-form.tsx:
+   447→   447→   - Switching layer: receives `type` prop, renders the corresponding form
+   448→   448→   - For now, only "url" maps to UrlForm. Other types show "Coming in Session 6" placeholder.
+   449→   449→
+   450→   450→7. app/_components/qr/preview.tsx:
+   451→   451→   - Square aspect ratio container, white bg, border
+   452→   452→   - Renders QR via qrcode.react QRCodeSVG (live, updates on every change)
+   453→   453→   - Empty state: QrCode icon + "Enter a URL and click Generate"
+   454→   454→   - Loading state: Skeleton square
+   455→   455→   - Below preview: PNG + SVG download buttons (disabled until valid QR exists)
+   456→   456→
+   457→   457→8. app/_components/qr/customizer.tsx:
+   458→   458→   - Stub for now — just renders a section titled "Customize" with "Full customizer coming in Session 5"
+   459→   459→   - Still render it in the right panel so the layout is correct
+   460→   460→
+   461→   461→9. app/_components/qr/generator.tsx:
+   462→   462→   - Master component with 3-panel layout (per spec Section 3.2)
+   463→   463→   - State: selectedType, content, design, previewUrl
+   464→   464→   - "Generate QR Code" button calls renderQrSvg + renderQrPng, sets previewUrl
+   465→   465→   - On first download: show soft upsell card (spec Section 6 Chapter 2) — but only if not logged in. For now, always show since auth comes in Session 7.
+   466→   466→
+   467→   467→10. app/create/page.tsx:
+   468→   468→    - Renders MarketingNav (reuse from Session 2 — actually create a layout)
+   469→   469→    - Renders Generator
+   470→   470→    - MarketingNav at top, Generator below filling viewport
+   471→   471→
+   472→   472→11. app/create/layout.tsx:
+   473→   473→    - Uses MarketingNav + Footer (no Footer — generator is full-viewport)
+   474→   474→    - Actually: just MarketingNav. Generator fills the rest.
+   475→   475→
+   476→   476→MOBILE:
+   477→   477→- 3-panel collapses to single column
+   478→   478→- TypeSelector becomes horizontal scroll row at top
+   479→   479→- Customizer hidden behind accordion button "[Customize Design ▼]"
+   480→   480→
+   481→   481→ACCEPTANCE:
+   482→   482→- /create loads with URL selected by default
+   483→   483→- Typing a URL + clicking Generate shows a real QR code
+   484→   484→- PNG and SVG downloads work and produce valid files
+   485→   485→- Changing the URL and regenerating updates the preview
+   486→   486→- Mobile layout works at 375px
+   487→   487→- No server calls — verify in Network tab (only static assets)
+   488→   488→- Empty state shows when no URL entered
+   489→   489→- Invalid URL shows inline error
+   490→   490→```
+   491→   491→
+   492→   492→### Acceptance Checklist
+   493→   493→
+   494→   494→- [ ] 3-panel layout on desktop
+   495→   495→- [ ] Single-column on mobile
+   496→   496→- [ ] URL form validates properly
+   497→   497→- [ ] QR renders client-side
+   498→   498→- [ ] PNG download works
+   499→   499→- [ ] SVG download works
+   500→   500→- [ ] Auto-prefix https:// works
+   501→   501→- [ ] Type selector search works
+   502→   502→- [ ] No network calls during generation
+   503→   503→
+   504→   504→### Pitfalls
+   505→   505→
+   506→   506→- qrcode.react's QRCodeSVG vs QRCodeCanvas — use SVG for preview (crisper), Canvas for PNG export
+   507→   507→- Auto-prefix logic: don't prefix if user is mid-typing (only on blur or on Generate)
+   508→   508→- Make sure download triggers actual file save, not navigation
+   509→   509→
+   510→   510→---
+   511→   511→
+   512→   512→## Session 5 — Customizer Full
+   513→   513→
+   514→   514→**Goal:** Complete customizer with colors, dot styles, eye styles, logo, error correction, output size, gradient.
+   515→   515→
+   516→   516→**Time:** 3 hours
+   517→   517→**Dependencies:** Session 4
+   518→   518→**Files:**
+   519→   519→- `app/_components/qr/customizer.tsx` (rewrite)
+   520→   520→- `app/_components/qr/color-picker.tsx`
+   521→   521→- `app/_components/qr/dot-style-picker.tsx`
+   522→   522→- `app/_components/qr/eye-style-picker.tsx`
+   523→   523→- `app/_components/qr/logo-uploader.tsx`
+   524→   524→- `app/_components/qr/error-correction-selector.tsx`
+   525→   525→- `app/_components/qr/output-size-selector.tsx`
+   526→   526→- `app/_components/qr/gradient-controls.tsx`
+   527→   527→- `lib/qr-render.ts` (extend)
+   528→   528→
+   529→   529→### Paste-Ready Prompt
+   530→   530→
+   531→   531→```
+   532→   532→Build the full QR customizer. Reference: CreateAnQRCode-VibeSpec.md Section 6 Chapter 4 + Section 2.2.
+   533→   533→
+   534→   534→TASKS:
+   535→   535→
+   536→   536→1. app/_components/qr/color-picker.tsx:
+   537→   537→   Props: label, value (hex string), onChange, allowTransparent?
+   538→   538→   - Label (12px uppercase text-neutral-500)
+   539→   539→   - Trigger: 32x32 rounded-full swatch showing current color
+   540→   540→   - Popover (shadcn Popover) on click with:
+   541→   541→     - 16 preset swatches in 4x4 grid (per spec Section 6 Chapter 4.2 — black, white, neutral-900/700/500/300, plus 10 brand colors: red, orange, amber, yellow, green, teal, cyan, blue, indigo, violet, pink, rose)
+   542→   542→     - Hex input field (validates #RRGGBB)
+   543→   543→     - Native color picker as fallback
+   544→   544→     - If allowTransparent: checkbox "Transparent"
+   545→   545→   - 150ms transition on swatch hover
+   546→   546→
+   547→   547→2. app/_components/qr/dot-style-picker.tsx:
+   548→   548→   Props: value, onChange
+   549→   549→   - 6 visual tiles in 3x2 grid (square, rounded, dots, classy, classy-rounded, extra-rounded)
+   550→   550→   - Each tile: 64x64, white bg, border, shows actual QR snippet rendered with that dot style
+   551→   551→   - Selected: border-2 border-black dark:border-white
+   552→   552→   - Use qrcode.react with custom dotStyle for each preview
+   553→   553→
+   554→   554→3. app/_components/qr/eye-style-picker.tsx:
+   555→   555→   Props: value, onChange
+   556→   556→   - 3 tiles in row (square, extra-rounded, dot)
+   557→   557→   - Same visual treatment as dot-style-picker
+   558→   558→
+   559→   559→4. app/_components/qr/logo-uploader.tsx:
+   560→   560→   Props: value (File | null), onChange
+   561→   561→   - Drag-drop area (dashed border, p-8, "Drop logo here or click to browse")
+   562→   562→   - Accepts: .png, .svg, .webp, max 2MB
+   563→   563→   - On upload: preview thumbnail + two sliders:
+   564→   564→     - Logo size: 10% to 40% (default 20%)
+   565→   565→     - Logo padding: 0 to 20px (default 5px)
+   566→   566→   - Helper text dynamically updates per spec:
+   567→   567→     - < 25%: "Safe for all error correction levels"
+   568→   568→     - 25-30%: "Set error correction to Q or H"
+   569→   569→     - > 30%: "Only use with H error correction"
+   570→   570→   - Remove button (X) to clear logo
+   571→   571→
+   572→   572→5. app/_components/qr/error-correction-selector.tsx:
+   573→   573→   Props: value (L/M/Q/H), onChange
+   574→   574→   - 4 segmented buttons in a row
+   575→   575→   - Each button shows level letter + recoverable % (L 7%, M 15%, Q 25%, H 30%)
+   576→   576→   - Selected: bg-black text-white (light) / inverse (dark)
+   577→   577→
+   578→   578→6. app/_components/qr/output-size-selector.tsx:
+   579→   579→   Props: value (256/512/1024/2048), onChange
+   580→   580→   - 4 segmented buttons
+   581→   581→   - Each shows size + recommended use:
+   582→   582→     - 256: "Screen previews"
+   583→   583→     - 512: "Standard digital"
+   584→   584→     - 1024: "Medium print"
+   585→   585→     - 2048: "Large format"
+   586→   586→
+   587→   587→7. app/_components/qr/gradient-controls.tsx:
+   588→   588→   Props: value ({ type: "none" | "linear" | "radial", color1?, color2?, angle? }), onChange
+   589→   589→   - 3 segmented buttons: None, Linear, Radial
+   590→   590→   - If Linear: show 2 ColorPickers (start, end) + angle slider (0-360°) + visual angle indicator
+   591→   591→   - If Radial: show 2 ColorPickers (center, edge)
+   592→   592→   - If None: no additional controls
+   593→   593→
+   594→   594→8. app/_components/qr/customizer.tsx (rewrite):
+   595→   595→   - Renders all 6 sections in scrollable right panel
+   596→   596→   - Each section: title (12px uppercase text-neutral-500) + content
+   597→   597→   - Sections separated by border-t
+   598→   598→   - Section components receive design state from parent Generator and call onChange with new design
+   599→   599→
+   600→   600→9. lib/qr-render.ts (extend):
+   601→   601→   - renderQrSvg now honors: fg, bg, dot, eye, ec, logo (overlay), gradient
+   602→   602→   - For logo: render QR SVG, then overlay logo as <image> element centered with specified size + padding
+   603→   603→   - For gradient: render dots with SVG <linearGradient> or <radialGradient> definition
+   604→   604→   - renderQrPng: same, but rendered to canvas then exported
+   605→   605→
+   606→   606→10. Update app/_components/qr/generator.tsx to:
+   607→   607→    - Pass full design object to customizer
+   608→   608→    - Re-render preview on every design change (debounced 300ms)
+   609→   609→    - Generate button now produces final QR with all customizations
+   610→   610→
+   611→   611→ACCEPTANCE:
+   612→   612→- Changing foreground color updates preview live
+   613→   613→- Transparent background works (preview shows checkerboard behind)
+   614→   614→- All 6 dot styles render visibly different
+   615→   615→- All 3 eye styles render visibly different
+   616→   616→- Logo upload + size/padding sliders work
+   617→   617→- Logo size warning text appears at correct thresholds
+   618→   618→- All 4 EC levels selectable
+   619→   619→- All 4 output sizes selectable, downloaded PNG matches selected size
+   620→   620→- Linear gradient with angle works
+   621→   621→- Radial gradient works
+   622→   622→- SVG download includes logo and gradient
+   623→   623→- Mobile: customizer is collapsible accordion
+   624→   624→```
+   625→   625→
+   626→   626→### Acceptance Checklist
+   627→   627→
+   628→   628→- [ ] 16 color presets work
+   629→   629→- [ ] Hex input validates
+   630→   630→- [ ] Transparent bg works
+   631→   631→- [ ] 6 dot styles render
+   632→   632→- [ ] 3 eye styles render
+   633→   633→- [ ] Logo upload + sliders work
+   634→   634→- [ ] Logo size warnings appear
+   635→   635→- [ ] EC selector works
+   636→   636→- [ ] Output size selector works
+   637→   637→- [ ] Linear gradient + angle works
+   638→   638→- [ ] Radial gradient works
+   639→   639→- [ ] SVG download includes all customizations
+   640→   640→- [ ] PNG download at correct size
+   641→   641→
+   642→   642→### Pitfalls
+   643→   643→
+   644→   644→- qrcode.react doesn't natively support all dot styles — may need to fork or use a library like `qr-code-styling`
+   645→   645→- Transparent background in SVG: set `background-fill="none"` not just remove the bg rect
+   646→   646→- Logo overlay in SVG requires correct z-ordering
+   647→   647→
+   648→   648→---
+   649→   649→
+   650→   650→## Session 6 — Phase 1 QR Type Forms (10 types)
+   651→   651→
+   652→   652→**Goal:** All 10 Phase 1 QR type forms (URL, Text, Email, Phone, SMS, WhatsApp, WiFi, vCard, UPI, Location) with payload builders.
+   653→   653→
+   654→   654→**Time:** 3 hours
+   655→   655→**Dependencies:** Session 4
+   656→   656→**Files:**
+   657→   657→- `app/_components/qr/forms/text-form.tsx`
+   658→   658→- `app/_components/qr/forms/email-form.tsx`
+   659→   659→- `app/_components/qr/forms/phone-form.tsx`
+   660→   660→- `app/_components/qr/forms/sms-form.tsx`
+   661→   661→- `app/_components/qr/forms/whatsapp-form.tsx`
+   662→   662→- `app/_components/qr/forms/wifi-form.tsx`
+   663→   663→- `app/_components/qr/forms/vcard-form.tsx`
+   664→   664→- `app/_components/qr/forms/upi-form.tsx`
+   665→   665→- `app/_components/qr/forms/location-form.tsx`
+   666→   666→- `lib/qr-payloads.ts` (extend with 9 more builders)
+   667→   667→
+   668→   668→### Paste-Ready Prompt
+   669→   669→
+   670→   670→```
+   671→   671→Build the 9 remaining Phase 1 QR type forms (URL already done in Session 4). Reference: CreateAnQRCode-VibeSpec.md Section 6 Chapter 20 + Section 2.2.
+   672→   672→
+   673→   673→TASKS:
+   674→   674→
+   675→   675→For each form below:
+   676→   676→- Use react-hook-form + zod
+   677→   677→- All required fields marked with *
+   678→   678→- Helper text below fields where needed
+   679→   679→- Validation errors inline below field
+   680→   680→- Expose value via onChange prop
+   681→   681→- Field components: shadcn Input, Label, Select, Textarea, Switch
+   682→   682→
+   683→   683→1. lib/qr-payloads.ts — add 9 builders:
+   684→   684→
+   685→   685→   buildTextPayload(data: { text: string }): string
+   686→   686→   - Returns text as-is, max 2000 chars
+   687→   687→
+   688→   688→   buildEmailPayload(data: { to: string; subject?: string; body?: string }): string
+   689→   689→   - Returns `mailto:to?subject=...&body=...` with URL-encoded values
+   690→   690→
+   691→   691→   buildPhonePayload(data: { number: string }): string
+   692→   692→   - E.164 validation: +[countrycode][number]
+   693→   693→   - Returns `tel:number`
+   694→   694→
+   695→   695→   buildSmsPayload(data: { number: string; message?: string }): string
+   696→   696→   - Returns `sms:number?body=message`
+   697→   697→
+   698→   698→   buildWhatsappPayload(data: { number: string; message?: string }): string
+   699→   699→   - Number: digits only, no +
+   700→   700→   - Returns `https://wa.me/number?text=message`
+   701→   701→
+   702→   702→   buildWifiPayload(data: { ssid: string; password?: string; security: "WPA2" | "WEP" | "None"; hidden?: boolean }): string
+   703→   703→   - Escape special chars in SSID/password: \ ; , : "
+   704→   704→   - Returns `WIFI:T:security;S:ssid;P:password;H:hidden;;`
+   705→   705→
+   706→   706→   buildVcardPayload(data: { firstName: string; lastName?: string; phone?: string; email?: string; company?: string; title?: string; website?: string; address?: string }): string
+   707→   707→   - Returns vCard 4.0 format string
+   708→   708→
+   709→   709→   buildUpiPayload(data: { vpa: string; name: string; amount?: string; note?: string }): string
+   710→   710→   - VPA regex: ^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9.\-_]{2,64}$
+   711→   711→   - Returns `upi://pay?pa=...&pn=...&am=...&tn=...&cu=INR`
+   712→   712→
+   713→   713→   buildLocationPayload(data: { lat: number; lng: number }): string
+   714→   714→   - Lat: -90 to 90, Lng: -180 to 180
+   715→   715→   - Returns `geo:lat,lng`
+   716→   716→
+   717→   717→2. app/_components/qr/forms/text-form.tsx:
+   718→   718→   - Single Textarea (max 2000 chars, char counter below)
+   719→   719→
+   720→   720→3. app/_components/qr/forms/email-form.tsx:
+   721→   721→   - to* (email input)
+   722→   722→   - subject? (text input)
+   723→   723→   - body? (textarea)
+   724→   724→
+   725→   725→4. app/_components/qr/forms/phone-form.tsx:
+   726→   726→   - number* (tel input, placeholder +91 98765 43210)
+   727→   727→   - Helper: "Include country code"
+   728→   728→
+   729→   729→5. app/_components/qr/forms/sms-form.tsx:
+   730→   730→   - number* (tel input)
+   731→   731→   - message? (textarea, max 160 chars for SMS compatibility)
+   732→   732→
+   733→   733→6. app/_components/qr/forms/whatsapp-form.tsx:
+   734→   734→   - number* (tel input, digits only)
+   735→   735→   - message? (textarea)
+   736→   736→
+   737→   737→7. app/_components/qr/forms/wifi-form.tsx:
+   738→   738→   - ssid* (text input, max 32 chars)
+   739→   739→   - password? (password input with show/hide toggle, disabled if security=None)
+   740→   740→   - security* (select: WPA2 default, WEP, None)
+   741→   741→   - hidden? (switch, "Hidden network")
+   742→   742→
+   743→   743→8. app/_components/qr/forms/vcard-form.tsx:
+   744→   744→   - 2-col grid: firstName* + lastName?
+   745→   745→   - phone? (tel)
+   746→   746→   - email? (email)
+   747→   747→   - company? (text)
+   748→   748→   - title? (text)
+   749→   749→   - website? (url)
+   750→   750→   - address? (textarea, 2 rows)
+   751→   751→
+   752→   752→9. app/_components/qr/forms/upi-form.tsx:
+   753→   753→   - vpa* (text, placeholder shop@paytm, helper "Find your UPI ID in any UPI app")
+   754→   754→   - name* (text, placeholder "Ravi's Kirana Store")
+   755→   755→   - amount? (number, placeholder "Leave blank for customer to enter")
+   756→   756→   - note? (text, placeholder "Payment for purchase")
+   757→   757→   - Info banner below form: "Works with PhonePe, Google Pay, Paytm, BHIM and all UPI apps"
+   758→   758→
+   759→   759→10. app/_components/qr/forms/location-form.tsx:
+   760→   760→    - lat* (number, step 0.000001)
+   761→   761→    - lng* (number, step 0.000001)
+   762→   762→    - "Use my location" button (geolocation API)
+   763→   763→    - Mini map preview using OpenStreetMap embed (no API key needed)
+   764→   764→
+   765→   765→11. Update app/_components/qr/content-form.tsx to map all 10 types to their forms.
+   766→   766→
+   767→   767→12. Update lib/qr-types.ts to mark all 10 Phase 1 types as enabled (remove "Coming soon" tooltips).
+   768→   768→
+   769→   769→ACCEPTANCE:
+   770→   770→- Each form produces a valid QR code when filled
+   771→   771→- Validation errors appear for invalid input (bad email, bad phone, bad VPA, etc.)
+   772→   772→- WiFi password field hides when security=None
+   773→   773→- UPI QR code is scannable by PhonePe/GPay (test on real device)
+   774→   774→- vCard QR code opens "Save contact" prompt when scanned
+   775→   775→- Location QR code opens maps app when scanned
+   776→   776→- All forms responsive at 375px
+   777→   777→```
+   778→   778→
+   779→   779→### Acceptance Checklist
+   780→   780→
+   781→   781→- [ ] 9 forms render correctly
+   782→   782→- [ ] All payload builders produce valid QR data
+   783→   783→- [ ] Validation works on all forms
+   784→   784→- [ ] WiFi password conditional logic works
+   785→   785→- [ ] UPI QR scannable
+   786→   786→- [ ] vCard QR scannable
+   787→   787→- [ ] Location "use my location" works
+   788→   788→- [ ] All forms responsive
+   789→   789→
+   790→   790→---
+   791→   791→
+   792→   792→## Session 7 — Auth (Signup, Login, Reset, Verify)
+   793→   793→
+   794→   794→**Goal:** Complete auth flow with Supabase, Google OAuth, Cloudflare Turnstile, email verification.
+   795→   795→
+   796→   796→**Time:** 4 hours
+   797→   797→**Dependencies:** Session 1
+   798→   798→**Files:**
+   799→   799→- `app/(auth)/layout.tsx`
+   800→   800→- `app/(auth)/_components/auth-shell.tsx`
+   801→   801→- `app/(auth)/_components/google-button.tsx`
+   802→   802→- `app/(auth)/_components/password-input.tsx`
+   803→   803→- `app/(auth)/_components/password-requirements.tsx`
+   804→   804→- `app/(auth)/_components/turnstile.tsx`
+   805→   805→- `app/(auth)/signup/page.tsx`
+   806→   806→- `app/(auth)/login/page.tsx`
+   807→   807→- `app/(auth)/reset-password/page.tsx`
+   808→   808→- `app/(auth)/update-password/page.tsx`
+   809→   809→- `app/(auth)/verify-email/page.tsx`
+   810→   810→- `app/api/auth/signup/route.ts`
+   811→   811→- `app/api/auth/callback/route.ts`
+   812→   812→- `lib/auth.ts`
+   813→   813→- `middleware.ts`
+   814→   814→- `prisma/schema.prisma` (User model)
+   815→   815→- `lib/email.ts` (Resend wrapper)
+   816→   816→- `emails/verify-email.tsx`
+   817→   817→- `emails/welcome.tsx`
+   818→   818→- `emails/password-reset.tsx`
+   819→   819→- `emails/new-login-alert.tsx`
+   820→   820→
+   821→   821→### Paste-Ready Prompt
+   822→   822→
+   823→   823→```
+   824→   824→Build the complete auth system. Reference: CreateAnQRCode-VibeSpec.md Section 3.10 + Section 6 Chapters 5, 6, 7.
+   825→   825→
+   826→   826→TASKS:
+   827→   827→
+   828→   828→1. prisma/schema.prisma — add User model per spec Section 8:
+   829→   829→   - id, email (unique), displayName, avatarUrl, plan (enum FREE/STARTER/PRO/BUSINESS/ENTERPRISE), trialEndsAt, timestamps
+   830→   830→   - Run prisma migrate dev --name auth
+   831→   831→
+   832→   832→2. lib/auth.ts — Supabase client helpers:
+   833→   833→   - createClient() — server client with cookies
+   834→   834→   - createServiceClient() — service role for admin ops
+   835→   835→   - getSession() — returns session or null
+   836→   836→   - requireUser() — throws redirect to /login if not authenticated
+   837→   837→   - requirePlan(minPlan) — for plan-gated routes
+   838→   838→
+   839→   839→3. app/(auth)/_components/auth-shell.tsx — per spec Section 3.10:
+   840→   840→   - Centered max-w-sm Card
+   841→   841→   - Logo at top (Link to /)
+   842→   842→   - Title + subtitle inside card
+   843→   843→   - Children below
+   844→   844→   - Footer text below card (e.g., "Already have an account? Log in")
+   845→   845→
+   846→   846→4. app/(auth)/_components/google-button.tsx:
+   847→   847→   - Outline button, full width
+   848→   848→   - Custom Google "G" SVG (16px) — ONLY place multi-color allowed
+   849→   849→   - "Continue with Google"
+   850→   850→   - onClick triggers Supabase OAuth signInWithGoogle
+   851→   851→
+   852→   852→5. app/(auth)/_components/password-input.tsx:
+   853→   853→   - shadcn Input + Eye/EyeOff toggle button (right side)
+   854→   854→   - Show/hide state internal
+   855→   855→
+   856→   856→6. app/(auth)/_components/password-requirements.tsx:
+   857→   857→   - 3 checks: 8+ chars, 1 uppercase, 1 number
+   858→   858→   - Live updates as user types
+   859→   859→   - Check icon (filled) when met, Circle icon (neutral) when not
+   860→   860→
+   861→   861→7. app/(auth)/_components/turnstile.tsx:
+   862→   862→   - Wraps Cloudflare Turnstile widget
+   863→   863→   - Props: onVerify(token)
+   864→   864→   - Renders the Turnstile div with site key from env
+   865→   865→
+   866→   866→8. app/(auth)/signup/page.tsx:
+   867→   867→   - AuthShell with title "Create your free account"
+   868→   868→   - GoogleButton
+   869→   869→   - Separator with "or"
+   870→   870→   - Form: email, password (with PasswordRequirements), confirm password
+   871→   871→   - Turnstile widget
+   872→   872→   - "Create Free Account" button (loading state with Loader2)
+   873→   873→   - On submit: POST /api/auth/signup
+   874→   874→   - On success: redirect to /verify-email?email=...
+   875→   875→   - Errors: EMAIL_TAKEN (link to /login), WEAK_PASSWORD (live checks), TURNSTILE_FAILED, RATE_LIMITED
+   876→   876→
+   877→   877→9. app/api/auth/signup/route.ts:
+   878→   878→   - Validate email + password server-side
+   879→   879→   - Verify Turnstile token with Cloudflare
+   880→   880→   - Check email not already in Supabase
+   881→   881→   - Create Supabase Auth user (autoConfirm=false so they get verification email)
+   882→   882→   - Insert User row in Prisma
+   883→   883→   - Send verification email via Resend
+   884→   884→   - Return 200 with redirect URL
+   885→   885→
+   886→   886→10. app/(auth)/verify-email/page.tsx:
+   887→   887→    - AuthShell with title "Check your email"
+   888→   888→    - Shows email from URL query
+   889→   889→    - "Resend email" button (disabled for 60 seconds with countdown)
+   890→   890→    - "Wrong email? Sign up again" link
+   891→   891→
+   892→   892→11. app/api/auth/callback/route.ts:
+   893→   893→    - Exchanges verification token for session
+   894→   894→    - Creates profile row if not exists
+   895→   895→    - Sends welcome email
+   896→   896→    - Redirects to /app
+   897→   897→
+   898→   898→12. app/(auth)/login/page.tsx:
+   899→   899→    - AuthShell with title "Welcome back"
+   900→   900→    - GoogleButton
+   901→
+   902→[showing lines 1-900 of 3413; use offset=901 with limit to continue reading]

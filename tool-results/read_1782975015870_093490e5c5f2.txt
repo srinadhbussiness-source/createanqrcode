@@ -1,0 +1,891 @@
+     1→'use client'
+     2→
+     3→import { useMemo, useRef, useState } from 'react'
+     4→import { useMutation } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import Papa from 'papaparse'
+     7→import JSZip from 'jszip'
+     8→import {
+     9→  UploadCloud, FileSpreadsheet, ArrowRight, ArrowLeft, Loader2, CheckCircle2,
+    10→  XCircle, Lock, Download, RefreshCw, FolderOpen, Settings2, Sparkles,
+    11→  AlertTriangle, FileDown, Check, X,
+    12→} from 'lucide-react'
+    13→import { Button } from '@/components/ui/button'
+    14→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Label } from '@/components/ui/label'
+    17→import { Badge } from '@/components/ui/badge'
+    18→import { Progress } from '@/components/ui/progress'
+    19→import {
+    20→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    21→} from '@/components/ui/select'
+    22→import {
+    23→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    24→} from '@/components/ui/table'
+    25→import { useRouterStore, useAuthStore } from '@/lib/stores'
+    26→import { api, ApiError } from '@/lib/api'
+    27→import { QR_TYPES } from '@/lib/qr-types'
+    28→import { PLAN_LIMITS, DEFAULT_DESIGN, type QrDesign, type QrTypeId } from '@/lib/types'
+    29→import { getQrDataUrl } from '@/lib/qr-generate'
+    30→import { QrPreview } from '@/components/qr-preview'
+    31→import { cn } from '@/lib/utils'
+    32→
+    33→type Step = 1 | 2 | 3 | 4 | 5
+    34→
+    35→const STEPS: { num: Step; label: string }[] = [
+    36→  { num: 1, label: 'Upload' },
+    37→  { num: 2, label: 'Map' },
+    38→  { num: 3, label: 'Review' },
+    39→  { num: 4, label: 'Generate' },
+    40→  { num: 5, label: 'Download' },
+    41→]
+    42→
+    43→interface CsvRow { [key: string]: string }
+    44→
+    45→interface BulkResult {
+    46→  created: number
+    47→  errors: { row: number; error: string }[]
+    48→  total: number
+    49→}
+    50→
+    51→const DOT_STYLES: { value: QrDesign['dotStyle']; label: string }[] = [
+    52→  { value: 'square', label: 'Square' },
+    53→  { value: 'rounded', label: 'Rounded' },
+    54→  { value: 'dots', label: 'Dots' },
+    55→  { value: 'classy', label: 'Classy' },
+    56→]
+    57→const EYE_STYLES: { value: QrDesign['eyeStyle']; label: string }[] = [
+    58→  { value: 'square', label: 'Square' },
+    59→  { value: 'extra-rounded', label: 'Rounded' },
+    60→  { value: 'dot', label: 'Dot' },
+    61→]
+    62→const ERROR_LEVELS: QrDesign['errorCorrection'][] = ['L', 'M', 'Q', 'H']
+    63→
+    64→export function BulkView() {
+    65→  const navigate = useRouterStore((s) => s.navigate)
+    66→  const user = useAuthStore((s) => s.user)
+    67→  const plan = user?.plan ?? 'free'
+    68→  const bulkLimit = PLAN_LIMITS[plan].bulkBatch ?? 0
+    69→
+    70→  const [step, setStep] = useState<Step>(1)
+    71→  const [rows, setRows] = useState<CsvRow[]>([])
+    72→  const [headers, setHeaders] = useState<string[]>([])
+    73→  const [fileName, setFileName] = useState('')
+    74→  const [parseError, setParseError] = useState<string | null>(null)
+    75→  const [dragOver, setDragOver] = useState(false)
+    76→  const [qrType, setQrType] = useState<QrTypeId>('url')
+    77→  const [payloadKey, setPayloadKey] = useState<string>('')
+    78→  const [titleKey, setTitleKey] = useState<string>('')
+    79→  const [folderKey, setFolderKey] = useState<string>('')
+    80→  const [design, setDesign] = useState<QrDesign>(DEFAULT_DESIGN)
+    81→  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+    82→  const [progress, setProgress] = useState(0)
+    83→  const [result, setResult] = useState<BulkResult | null>(null)
+    84→  const [zipping, setZipping] = useState(false)
+    85→  const fileInputRef = useRef<HTMLInputElement>(null)
+    86→
+    87→  // All hooks must run before the early return below.
+    88→  const validRows = useMemo(() => {
+    89→    if (!payloadKey || !titleKey) return [] as CsvRow[]
+    90→    return rows.filter((r) => (r[titleKey] ?? '').trim() && (r[payloadKey] ?? '').trim())
+    91→  }, [rows, payloadKey, titleKey])
+    92→  const invalidRows = useMemo(
+    93→    () => rows.filter((r) => !(r[titleKey] ?? '').trim() || !(r[payloadKey] ?? '').trim()),
+    94→    [rows, payloadKey, titleKey]
+    95→  )
+    96→
+    97→  const generateMut = useMutation({
+    98→    mutationFn: (payload: {
+    99→      rows: CsvRow[]; qrType: QrTypeId; design: QrDesign
+   100→      titleKey: string; payloadKey: string; folderId?: string | null
+   101→    }) => api.post<BulkResult>('/api/bulk', payload),
+   102→    onMutate: () => {
+   103→      setProgress(2)
+   104→    },
+   105→    onSuccess: (res) => {
+   106→      setResult(res)
+   107→      // Animate progress to 100%
+   108→      let p = 2
+   109→      const interval = setInterval(() => {
+   110→        p = Math.min(100, p + Math.max(1, Math.round((100 - p) / 6)))
+   111→        setProgress(p)
+   112→        if (p >= 100) {
+   113→          clearInterval(interval)
+   114→          setTimeout(() => setStep(5), 350)
+   115→        }
+   116→      }, 60)
+   117→    },
+   118→    onError: (e) => {
+   119→      const msg = e instanceof ApiError ? e.message : 'Bulk generation failed'
+   120→      toast.error(msg)
+   121→      setStep(3)
+   122→    },
+   123→  })
+   124→
+   125→  // ---------- Access gate ----------
+   126→  if (bulkLimit === 0) {
+   127→    return (
+   128→      <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+   129→        <div>
+   130→          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Bulk Generation</h1>
+   131→          <p className="mt-1 text-sm text-muted-foreground">
+   132→            Generate hundreds of QR codes in seconds from a CSV file.
+   133→          </p>
+   134→        </div>
+   135→        <Card className="relative overflow-hidden border-brand/30">
+   136→          <CardContent className="p-0">
+   137→            <div className="relative">
+   138→              <div className="pointer-events-none select-none p-6 blur-sm" aria-hidden>
+   139→                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   140→                  {[0, 1, 2, 3].map((i) => (
+   141→                    <div key={i} className="aspect-square rounded-xl border border-border bg-card p-4">
+   142→                      <div className="h-full w-full rounded bg-muted" />
+   143→                    </div>
+   144→                  ))}
+   145→                </div>
+   146→              </div>
+   147→              <div className="absolute inset-0 grid place-items-center bg-background/70 backdrop-blur-sm">
+   148→                <div className="max-w-md p-6 text-center">
+   149→                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-muted text-brand">
+   150→                    <Lock className="h-7 w-7" />
+   151→                  </div>
+   152→                  <h2 className="mt-4 text-xl font-bold">Bulk generation requires Pro plan or higher</h2>
+   153→                  <p className="mt-1.5 text-sm text-muted-foreground">
+   154→                    Upload a CSV with up to {PLAN_LIMITS.pro.bulkBatch} rows (Pro) or {PLAN_LIMITS.business.bulkBatch} rows (Business)
+   155→                    and generate branded QR codes in seconds.
+   156→                  </p>
+   157→                  <Button
+   158→                    onClick={() => navigate('billing')}
+   159→                    className="mt-4 bg-brand text-brand-foreground hover:bg-brand/90"
+   160→                  >
+   161→                    Upgrade to Pro <ArrowRight className="ml-2 h-4 w-4" />
+   162→                  </Button>
+   163→                </div>
+   164→              </div>
+   165→            </div>
+   166→          </CardContent>
+   167→        </Card>
+   168→      </div>
+   169→    )
+   170→  }
+   171→
+   172→  // ---------- Helpers ----------
+   173→  const handleFile = (file: File) => {
+   174→    setParseError(null)
+   175→    setFileName(file.name)
+   176→    Papa.parse<CsvRow>(file, {
+   177→      header: true,
+   178→      skipEmptyLines: true,
+   179→      complete: (res) => {
+   180→        if (!res.data?.length) {
+   181→          setParseError('No rows found in this file.')
+   182→          return
+   183→        }
+   184→        const cols = (res.meta.fields ?? Object.keys(res.data[0] ?? {})).filter(Boolean)
+   185→        if (cols.length === 0) {
+   186→          setParseError('Could not detect column headers.')
+   187→          return
+   188→        }
+   189→        setRows(res.data)
+   190→        setHeaders(cols)
+   191→        // Auto-suggest mapping
+   192→        const guess = (kw: string[]) => cols.find((c) => kw.some((k) => c.toLowerCase().includes(k)))
+   193→        setPayloadKey(guess(['url', 'link', 'payload', 'website', 'destination']) ?? cols[0])
+   194→        setTitleKey(guess(['title', 'name', 'label']) ?? cols[1] ?? cols[0])
+   195→        setFolderKey(guess(['folder']) ?? '')
+   196→        setStep(2)
+   197→        toast.success(`Loaded ${res.data.length} rows`)
+   198→      },
+   199→      error: (err) => setParseError(err.message || 'Failed to parse CSV'),
+   200→    })
+   201→  }
+   202→
+   203→  // startGenerate triggers the generateMut defined above.
+   204→  const startGenerate = () => {
+   205→    setStep(4)
+   206→    setProgress(0)
+   207→    const folderId = folderKey ? rows[0]?.[folderKey] : undefined
+   208→    generateMut.mutate({
+   209→      rows: validRows,
+   210→      qrType,
+   211→      design,
+   212→      titleKey,
+   213→      payloadKey,
+   214→      folderId: folderId || null,
+   215→    })
+   216→  }
+   217→
+   218→  const downloadSampleCsv = (kind: 'url' | 'wifi' | 'upi') => {
+   219→    let csv = ''
+   220→    if (kind === 'url') {
+   221→      csv = 'title,url\nHomepage,https://example.com\nBlog,https://example.com/blog\nPricing,https://example.com/pricing'
+   222→    } else if (kind === 'wifi') {
+   223→      csv = 'title,wifi_payload\nOffice,WIFI:T:WPA2;S:OfficeNet;P:Pass123;;\nCafe,WIFI:T:WPA2;S:CafeFree;P:welcome;;\nGuest,WIFI:T:WPA2;S:GuestNet;P:guest2024;;'
+   224→    } else {
+   225→      csv = 'title,upi_payload\nStore A,upi://pay?pa=storea@upi&pn=Store%20A\nStore B,upi://pay?pa=storeb@upi&pn=Store%20B\nStore C,upi://pay?pa=storec@upi&pn=Store%20C'
+   226→    }
+   227→    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+   228→    const url = URL.createObjectURL(blob)
+   229→    const a = document.createElement('a')
+   230→    a.href = url
+   231→    a.download = `sample-${kind}.csv`
+   232→    a.click()
+   233→    URL.revokeObjectURL(url)
+   234→  }
+   235→
+   236→  const downloadErrorReport = () => {
+   237→    if (!result?.errors?.length) {
+   238→      toast.info('No errors to report')
+   239→      return
+   240→    }
+   241→    const csv = ['row,error', ...result.errors.map((e) => `${e.row},"${e.error.replace(/"/g, '""')}"`)].join('\n')
+   242→    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+   243→    const url = URL.createObjectURL(blob)
+   244→    const a = document.createElement('a')
+   245→    a.href = url
+   246→    a.download = 'bulk-errors.csv'
+   247→    a.click()
+   248→    URL.revokeObjectURL(url)
+   249→  }
+   250→
+   251→  const downloadZip = async () => {
+   252→    if (!validRows.length) return
+   253→    setZipping(true)
+   254→    try {
+   255→      const zip = new JSZip()
+   256→      // Limit to first 100 in browser to avoid heavy memory; rest available in dashboard
+   257→      const slice = validRows.slice(0, 100)
+   258→      let done = 0
+   259→      for (const row of slice) {
+   260→        const title = row[titleKey].trim()
+   261→        const payload = row[payloadKey].trim()
+   262→        const safeName = title.replace(/[^a-zA-Z0-9-_ ]/g, '').slice(0, 40).trim() || `qr-${done + 1}`
+   263→        try {
+   264→          const dataUrl = await getQrDataUrl(payload, design, logoDataUrl, 512)
+   265→          const base64 = dataUrl.split(',')[1]
+   266→          if (base64) zip.file(`${safeName}.png`, base64, { base64: true })
+   267→        } catch {
+   268→          // skip failed render
+   269→        }
+   270→        done++
+   271→        setProgress(Math.round((done / slice.length) * 100))
+   272→      }
+   273→      const blob = await zip.generateAsync({ type: 'blob' })
+   274→      const url = URL.createObjectURL(blob)
+   275→      const a = document.createElement('a')
+   276→      a.href = url
+   277→      a.download = `qr-codes-bulk-${Date.now()}.zip`
+   278→      a.click()
+   279→      URL.revokeObjectURL(url)
+   280→      toast.success(`Downloaded ${slice.length} QR codes as ZIP`)
+   281→    } catch {
+   282→      toast.error('ZIP generation failed')
+   283→    } finally {
+   284→      setZipping(false)
+   285→      setProgress(0)
+   286→    }
+   287→  }
+   288→
+   289→  const resetWizard = () => {
+   290→    setStep(1)
+   291→    setRows([])
+   292→    setHeaders([])
+   293→    setFileName('')
+   294→    setParseError(null)
+   295→    setResult(null)
+   296→    setProgress(0)
+   297→  }
+   298→
+   299→  // ---------- Render ----------
+   300→  return (
+   301→    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+   302→      {/* Header */}
+   303→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   304→        <div>
+   305→          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Bulk Generation</h1>
+   306→          <p className="mt-1 text-sm text-muted-foreground">
+   307→            Upload a CSV, map columns, customize design, generate a batch.
+   308→          </p>
+   309→        </div>
+   310→        <Badge variant="outline" className="gap-1 border-brand/40 text-brand">
+   311→          <Sparkles className="h-3 w-3" /> Limit: {bulkLimit} / batch
+   312→        </Badge>
+   313→      </div>
+   314→
+   315→      {/* Step indicator */}
+   316→      <Card className="border-border">
+   317→        <CardContent className="p-4">
+   318→          <ol className="flex flex-wrap items-center gap-2">
+   319→            {STEPS.map((s, i) => {
+   320→              const isActive = s.num === step
+   321→              const isDone = s.num < step
+   322→              return (
+   323→                <li key={s.num} className="flex items-center gap-2">
+   324→                  <div
+   325→                    className={cn(
+   326→                      'flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium sm:text-sm',
+   327→                      isActive ? 'bg-brand text-brand-foreground' :
+   328→                      isDone ? 'bg-brand-muted text-brand' : 'bg-muted text-muted-foreground'
+   329→                    )}
+   330→                  >
+   331→                    <span
+   332→                      className={cn(
+   333→                        'grid h-5 w-5 place-items-center rounded-full text-[10px]',
+   334→                        isActive ? 'bg-brand-foreground/20' : isDone ? 'bg-brand/20' : 'bg-background/40'
+   335→                      )}
+   336→                    >
+   337→                      {isDone ? <Check className="h-3 w-3" /> : s.num}
+   338→                    </span>
+   339→                    <span className="hidden sm:inline">{s.label}</span>
+   340→                  </div>
+   341→                  {i < STEPS.length - 1 && <ArrowRight className="h-3 w-3 text-muted-foreground/50" />}
+   342→                </li>
+   343→              )
+   344→            })}
+   345→          </ol>
+   346→        </CardContent>
+   347→      </Card>
+   348→
+   349→      {/* Step 1: Upload */}
+   350→      {step === 1 && (
+   351→        <div className="space-y-4">
+   352→          <Card className="border-border">
+   353→            <CardContent className="p-6">
+   354→              <div
+   355→                onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+   356→                onDragLeave={() => setDragOver(false)}
+   357→                onDrop={(e) => {
+   358→                  e.preventDefault()
+   359→                  setDragOver(false)
+   360→                  const f = e.dataTransfer.files?.[0]
+   361→                  if (f) handleFile(f)
+   362→                }}
+   363→                className={cn(
+   364→                  'flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed py-12 text-center transition-colors',
+   365→                  dragOver ? 'border-brand bg-brand-muted/50' : 'border-border bg-card/50'
+   366→                )}
+   367→              >
+   368→                <span className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-muted text-brand">
+   369→                  <UploadCloud className="h-7 w-7" />
+   370→                </span>
+   371→                <div>
+   372→                  <p className="font-semibold">Drop your CSV here</p>
+   373→                  <p className="text-sm text-muted-foreground">or click to browse — .csv files supported</p>
+   374→                </div>
+   375→                <Button
+   376→                  variant="outline"
+   377→                  onClick={() => fileInputRef.current?.click()}
+   378→                >
+   379→                  <FileSpreadsheet className="mr-2 h-4 w-4" /> Choose file
+   380→                </Button>
+   381→                <input
+   382→                  ref={fileInputRef}
+   383→                  type="file"
+   384→                  accept=".csv,text/csv"
+   385→                  className="hidden"
+   386→                  onChange={(e) => {
+   387→                    const f = e.target.files?.[0]
+   388→                    if (f) handleFile(f)
+   389→                  }}
+   390→                />
+   391→              </div>
+   392→              {parseError && (
+   393→                <div className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+   394→                  <AlertTriangle className="h-4 w-4" /> {parseError}
+   395→                </div>
+   396→              )}
+   397→            </CardContent>
+   398→          </Card>
+   399→
+   400→          <Card className="border-border">
+   401→            <CardHeader>
+   402→              <CardTitle className="text-base">Don&apos;t have a CSV? Use a sample.</CardTitle>
+   403→            </CardHeader>
+   404→            <CardContent className="flex flex-wrap gap-2">
+   405→              <Button variant="outline" size="sm" onClick={() => downloadSampleCsv('url')}>
+   406→                <Download className="mr-1.5 h-3.5 w-3.5" /> URL sample
+   407→              </Button>
+   408→              <Button variant="outline" size="sm" onClick={() => downloadSampleCsv('wifi')}>
+   409→                <Download className="mr-1.5 h-3.5 w-3.5" /> WiFi sample
+   410→              </Button>
+   411→              <Button variant="outline" size="sm" onClick={() => downloadSampleCsv('upi')}>
+   412→                <Download className="mr-1.5 h-3.5 w-3.5" /> UPI sample
+   413→              </Button>
+   414→            </CardContent>
+   415→          </Card>
+   416→        </div>
+   417→      )}
+   418→
+   419→      {/* Step 2: Map */}
+   420→      {step === 2 && (
+   421→        <div className="space-y-4">
+   422→          <Card className="border-border">
+   423→            <CardHeader>
+   424→              <CardTitle className="text-base">Map columns</CardTitle>
+   425→              <p className="text-xs text-muted-foreground">
+   426→                Loaded <strong>{rows.length}</strong> rows from <strong className="break-all">{fileName}</strong>.
+   427→              </p>
+   428→            </CardHeader>
+   429→            <CardContent className="space-y-4">
+   430→              <div className="space-y-2">
+   431→                <Label>QR Type</Label>
+   432→                <Select value={qrType} onValueChange={(v) => setQrType(v as QrTypeId)}>
+   433→                  <SelectTrigger className="w-full">
+   434→                    <SelectValue />
+   435→                  </SelectTrigger>
+   436→                  <SelectContent>
+   437→                    {QR_TYPES.map((t) => (
+   438→                      <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+   439→                    ))}
+   440→                  </SelectContent>
+   441→                </Select>
+   442→              </div>
+   443→
+   444→              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+   445→                <div className="space-y-2">
+   446→                  <Label>Payload column <span className="text-destructive">*</span></Label>
+   447→                  <Select value={payloadKey} onValueChange={setPayloadKey}>
+   448→                    <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
+   449→                    <SelectContent>
+   450→                      {headers.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+   451→                    </SelectContent>
+   452→                  </Select>
+   453→                </div>
+   454→                <div className="space-y-2">
+   455→                  <Label>Title column</Label>
+   456→                  <Select value={titleKey} onValueChange={setTitleKey}>
+   457→                    <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
+   458→                    <SelectContent>
+   459→                      {headers.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+   460→                    </SelectContent>
+   461→                  </Select>
+   462→                </div>
+   463→                <div className="space-y-2">
+   464→                  <Label>Folder column (optional)</Label>
+   465→                  <Select value={folderKey || '__none__'} onValueChange={(v) => setFolderKey(v === '__none__' ? '' : v)}>
+   466→                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   467→                    <SelectContent>
+   468→                      <SelectItem value="__none__">No folder column</SelectItem>
+   469→                      {headers.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
+   470→                    </SelectContent>
+   471→                  </Select>
+   472→                </div>
+   473→              </div>
+   474→
+   475→              {/* Preview mapped */}
+   476→              <div>
+   477→                <Label>Preview (first 3 rows mapped)</Label>
+   478→                <div className="mt-2 overflow-hidden rounded-lg border border-border">
+   479→                  <Table>
+   480→                    <TableHeader>
+   481→                      <TableRow>
+   482→                        <TableHead className="w-12">#</TableHead>
+   483→                        <TableHead>Title</TableHead>
+   484→                        <TableHead>Payload</TableHead>
+   485→                      </TableRow>
+   486→                    </TableHeader>
+   487→                    <TableBody>
+   488→                      {rows.slice(0, 3).map((r, i) => (
+   489→                        <TableRow key={i}>
+   490→                          <TableCell className="text-muted-foreground">{i + 1}</TableCell>
+   491→                          <TableCell className="max-w-[160px] truncate font-medium">
+   492→                            {titleKey ? (r[titleKey] || <span className="text-destructive">—</span>) : '—'}
+   493→                          </TableCell>
+   494→                          <TableCell className="max-w-[200px] truncate text-muted-foreground">
+   495→                            {payloadKey ? (r[payloadKey] || <span className="text-destructive">—</span>) : '—'}
+   496→                          </TableCell>
+   497→                        </TableRow>
+   498→                      ))}
+   499→                    </TableBody>
+   500→                  </Table>
+   501→                </div>
+   502→              </div>
+   503→
+   504→              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+   505→                <Button variant="outline" onClick={() => setStep(1)}>
+   506→                  <ArrowLeft className="mr-1.5 h-4 w-4" /> Back
+   507→                </Button>
+   508→                <Button
+   509→                  onClick={() => setStep(3)}
+   510→                  disabled={!payloadKey || !titleKey}
+   511→                  className="bg-brand text-brand-foreground hover:bg-brand/90"
+   512→                >
+   513→                  Continue to Review <ArrowRight className="ml-1.5 h-4 w-4" />
+   514→                </Button>
+   515→              </div>
+   516→            </CardContent>
+   517→          </Card>
+   518→        </div>
+   519→      )}
+   520→
+   521→      {/* Step 3: Review */}
+   522→      {step === 3 && (
+   523→        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   524→          <div className="space-y-4 lg:col-span-2">
+   525→            <Card className="border-border">
+   526→              <CardHeader>
+   527→                <CardTitle className="text-base">Review & customize</CardTitle>
+   528→              </CardHeader>
+   529→              <CardContent className="space-y-4">
+   530→                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   531→                  <ReviewStat label="Total rows" value={String(rows.length)} />
+   532→                  <ReviewStat label="Valid rows" value={String(validRows.length)} accent />
+   533→                  <ReviewStat label="Invalid" value={String(invalidRows.length)} destructive={invalidRows.length > 0} />
+   534→                </div>
+   535→                {invalidRows.length > 0 && (
+   536→                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+   537→                    <div className="flex items-center gap-1.5 font-medium">
+   538→                      <AlertTriangle className="h-3.5 w-3.5" /> {invalidRows.length} rows have missing title or payload
+   539→                    </div>
+   540→                    <p className="mt-1 text-destructive/80">
+   541→                      These rows will be skipped during generation. You can still proceed with the valid rows.
+   542→                    </p>
+   543→                  </div>
+   544→                )}
+   545→
+   546→                {/* Compact design customizer */}
+   547→                <DesignCustomizer design={design} setDesign={setDesign} logoDataUrl={logoDataUrl} setLogoDataUrl={setLogoDataUrl} />
+   548→
+   549→                <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+   550→                  <Button variant="outline" onClick={() => setStep(2)}>
+   551→                    <ArrowLeft className="mr-1.5 h-4 w-4" /> Go back
+   552→                  </Button>
+   553→                  <Button
+   554→                    onClick={startGenerate}
+   555→                    disabled={validRows.length === 0 || validRows.length > bulkLimit}
+   556→                    className="bg-brand text-brand-foreground hover:bg-brand/90"
+   557→                  >
+   558→                    {invalidRows.length > 0 ? 'Skip invalid and continue' : `Generate ${validRows.length} QR codes`}
+   559→                    <ArrowRight className="ml-1.5 h-4 w-4" />
+   560→                  </Button>
+   561→                </div>
+   562→                {validRows.length > bulkLimit && (
+   563→                  <p className="text-xs text-destructive">
+   564→                    Your batch exceeds the {bulkLimit} row limit. Please upgrade or split your CSV.
+   565→                  </p>
+   566→                )}
+   567→              </CardContent>
+   568→            </Card>
+   569→          </div>
+   570→
+   571→          {/* Live preview of first row */}
+   572→          <Card className="border-border h-fit">
+   573→            <CardHeader>
+   574→              <CardTitle className="text-base">Preview (row 1)</CardTitle>
+   575→            </CardHeader>
+   576→            <CardContent className="flex flex-col items-center gap-3">
+   577→              {validRows[0] ? (
+   578→                <>
+   579→                  <div className="rounded-xl bg-white p-3 ring-1 ring-border">
+   580→                    <QrPreview
+   581→                      payload={validRows[0][payloadKey] || ' '}
+   582→                      design={design}
+   583→                      logoDataUrl={logoDataUrl}
+   584→                      size={180}
+   585→                    />
+   586→                  </div>
+   587→                  <div className="w-full text-center">
+   588→                    <p className="truncate text-sm font-medium">{validRows[0][titleKey]}</p>
+   589→                    <p className="truncate text-xs text-muted-foreground">{validRows[0][payloadKey]}</p>
+   590→                  </div>
+   591→                </>
+   592→              ) : (
+   593→                <p className="text-xs text-muted-foreground">No valid rows to preview.</p>
+   594→              )}
+   595→            </CardContent>
+   596→          </Card>
+   597→        </div>
+   598→      )}
+   599→
+   600→      {/* Step 4: Generate */}
+   601→      {step === 4 && (
+   602→        <Card className="border-border">
+   603→          <CardContent className="p-8">
+   604→            <div className="mx-auto flex max-w-md flex-col items-center gap-4 text-center">
+   605→              <div className="grid h-16 w-16 place-items-center rounded-2xl bg-brand-muted text-brand">
+   606→                <Loader2 className="h-8 w-8 animate-spin" />
+   607→              </div>
+   608→              <div>
+   609→                <h2 className="text-xl font-bold">Generating {validRows.length} QR codes...</h2>
+   610→                <p className="mt-1 text-sm text-muted-foreground">
+   611→                  Please wait — do not close this tab.
+   612→                </p>
+   613→              </div>
+   614→              <div className="w-full">
+   615→                <div className="mb-2 flex items-center justify-between text-xs">
+   616→                  <span className="text-muted-foreground">
+   617→                    {progress < 100 ? 'Working...' : 'Done!'}
+   618→                  </span>
+   619→                  <span className="font-medium">{progress}%</span>
+   620→                </div>
+   621→                <Progress value={progress} className="h-2" />
+   622→                <p className="mt-2 text-[11px] text-muted-foreground">
+   623→                  Estimated time: ~{Math.max(1, Math.round(validRows.length / 50))}s ·
+   624→                  {' '}{Math.round((progress / 100) * validRows.length)} / {validRows.length} processed
+   625→                </p>
+   626→              </div>
+   627→            </div>
+   628→          </CardContent>
+   629→        </Card>
+   630→      )}
+   631→
+   632→      {/* Step 5: Download */}
+   633→      {step === 5 && result && (
+   634→        <div className="space-y-4">
+   635→          <Card className="border-brand/30">
+   636→            <CardContent className="p-6 text-center">
+   637→              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-muted text-brand">
+   638→                <CheckCircle2 className="h-8 w-8" />
+   639→              </div>
+   640→              <h2 className="mt-3 text-xl font-bold">
+   641→                {result.created} QR codes generated
+   642→              </h2>
+   643→              <p className="mt-1 text-sm text-muted-foreground">
+   644→                Your batch is ready. Download as ZIP, view them in your dashboard, or generate another batch.
+   645→              </p>
+   646→            </CardContent>
+   647→          </Card>
+   648→
+   649→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   650→            <Card className="border-border">
+   651→              <CardHeader>
+   652→                <CardTitle className="text-base">Download</CardTitle>
+   653→              </CardHeader>
+   654→              <CardContent className="space-y-3">
+   655→                <Button
+   656→                  onClick={downloadZip}
+   657→                  disabled={zipping}
+   658→                  className="w-full bg-brand text-brand-foreground hover:bg-brand/90"
+   659→                >
+   660→                  {zipping ? (
+   661→                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Zipping... {progress}%</>
+   662→                  ) : (
+   663→                    <><Download className="mr-2 h-4 w-4" /> Download ZIP (PNG, max 100)</>
+   664→                  )}
+   665→                </Button>
+   666→                <Button
+   667→                  onClick={downloadErrorReport}
+   668→                  variant="outline"
+   669→                  className="w-full"
+   670→                  disabled={result.errors.length === 0}
+   671→                >
+   672→                  <FileDown className="mr-2 h-4 w-4" /> Download Error Report
+   673→                  {result.errors.length > 0 && (
+   674→                    <Badge variant="secondary" className="ml-2">{result.errors.length}</Badge>
+   675→                  )}
+   676→                </Button>
+   677→                <p className="text-xs text-muted-foreground">
+   678→                  ZIP download limited to first 100 codes for performance. All codes are saved in your dashboard.
+   679→                </p>
+   680→              </CardContent>
+   681→            </Card>
+   682→
+   683→            <Card className="border-border">
+   684→              <CardHeader>
+   685→                <CardTitle className="text-base">Next steps</CardTitle>
+   686→              </CardHeader>
+   687→              <CardContent className="space-y-3">
+   688→                <Button
+   689→                  variant="outline"
+   690→                  className="w-full justify-start"
+   691→                  onClick={() => navigate('qr-codes')}
+   692→                >
+   693→                  <FolderOpen className="mr-2 h-4 w-4" /> View all QR codes in dashboard
+   694→                </Button>
+   695→                <Button
+   696→                  variant="outline"
+   697→                  className="w-full justify-start"
+   698→                  onClick={resetWizard}
+   699→                >
+   700→                  <RefreshCw className="mr-2 h-4 w-4" /> Generate another batch
+   701→                </Button>
+   702→              </CardContent>
+   703→            </Card>
+   704→          </div>
+   705→
+   706→          {/* Error log */}
+   707→          {result.errors.length > 0 && (
+   708→            <Card className="border-destructive/30">
+   709→              <CardHeader>
+   710→                <CardTitle className="text-base flex items-center gap-2">
+   711→                  <XCircle className="h-4 w-4 text-destructive" />
+   712→                  Errors ({result.errors.length})
+   713→                </CardTitle>
+   714→              </CardHeader>
+   715→              <CardContent>
+   716→                <div className="max-h-60 overflow-y-auto scroll-thin">
+   717→                  <Table>
+   718→                    <TableHeader>
+   719→                      <TableRow>
+   720→                        <TableHead className="w-16">Row</TableHead>
+   721→                        <TableHead>Error</TableHead>
+   722→                      </TableRow>
+   723→                    </TableHeader>
+   724→                    <TableBody>
+   725→                      {result.errors.map((e, i) => (
+   726→                        <TableRow key={i}>
+   727→                          <TableCell className="text-muted-foreground">{e.row}</TableCell>
+   728→                          <TableCell className="text-destructive">{e.error}</TableCell>
+   729→                        </TableRow>
+   730→                      ))}
+   731→                    </TableBody>
+   732→                  </Table>
+   733→                </div>
+   734→              </CardContent>
+   735→            </Card>
+   736→          )}
+   737→        </div>
+   738→      )}
+   739→    </div>
+   740→  )
+   741→}
+   742→
+   743→// ---------- Sub components ----------
+   744→
+   745→function ReviewStat({
+   746→  label, value, accent, destructive,
+   747→}: { label: string; value: string; accent?: boolean; destructive?: boolean }) {
+   748→  return (
+   749→    <div
+   750→      className={cn(
+   751→        'rounded-lg border p-3',
+   752→        destructive ? 'border-destructive/30 bg-destructive/5' :
+   753→        accent ? 'border-brand/30 bg-brand-muted' : 'border-border bg-card'
+   754→      )}
+   755→    >
+   756→      <p className="text-[11px] text-muted-foreground">{label}</p>
+   757→      <p className={cn('mt-0.5 text-lg font-bold', destructive && 'text-destructive', accent && 'text-brand')}>
+   758→        {value}
+   759→      </p>
+   760→    </div>
+   761→  )
+   762→}
+   763→
+   764→function DesignCustomizer({
+   765→  design, setDesign, logoDataUrl, setLogoDataUrl,
+   766→}: {
+   767→  design: QrDesign
+   768→  setDesign: (d: QrDesign) => void
+   769→  logoDataUrl: string | null
+   770→  setLogoDataUrl: (s: string | null) => void
+   771→}) {
+   772→  const logoRef = useRef<HTMLInputElement>(null)
+   773→
+   774→  const update = <K extends keyof QrDesign>(k: K, v: QrDesign[K]) =>
+   775→    setDesign({ ...design, [k]: v })
+   776→
+   777→  const onLogo = (file?: File) => {
+   778→    if (!file) return
+   779→    const reader = new FileReader()
+   780→    reader.onload = () => setLogoDataUrl(reader.result as string)
+   781→    reader.readAsDataURL(file)
+   782→  }
+   783→
+   784→  return (
+   785→    <div className="rounded-lg border border-border bg-card/50 p-4">
+   786→      <div className="mb-3 flex items-center gap-2">
+   787→        <Settings2 className="h-4 w-4 text-brand" />
+   788→        <p className="text-sm font-semibold">Design (applied to all QR codes in batch)</p>
+   789→      </div>
+   790→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   791→        <div className="space-y-1.5">
+   792→          <Label className="text-xs">Foreground</Label>
+   793→          <div className="flex items-center gap-2">
+   794→            <input
+   795→              type="color"
+   796→              value={design.fgColor}
+   797→              onChange={(e) => update('fgColor', e.target.value)}
+   798→              className="h-8 w-9 cursor-pointer rounded border border-border bg-transparent"
+   799→            />
+   800→            <Input
+   801→              value={design.fgColor}
+   802→              onChange={(e) => update('fgColor', e.target.value)}
+   803→              className="h-8 text-xs"
+   804→            />
+   805→          </div>
+   806→        </div>
+   807→        <div className="space-y-1.5">
+   808→          <Label className="text-xs">Background</Label>
+   809→          <div className="flex items-center gap-2">
+   810→            <input
+   811→              type="color"
+   812→              value={design.bgColor}
+   813→              onChange={(e) => update('bgColor', e.target.value)}
+   814→              className="h-8 w-9 cursor-pointer rounded border border-border bg-transparent"
+   815→            />
+   816→            <Input
+   817→              value={design.bgColor}
+   818→              onChange={(e) => update('bgColor', e.target.value)}
+   819→              className="h-8 text-xs"
+   820→            />
+   821→          </div>
+   822→        </div>
+   823→        <div className="space-y-1.5">
+   824→          <Label className="text-xs">Dot style</Label>
+   825→          <Select value={design.dotStyle} onValueChange={(v) => update('dotStyle', v as QrDesign['dotStyle'])}>
+   826→            <SelectTrigger className="h-8 text-xs w-full"><SelectValue /></SelectTrigger>
+   827→            <SelectContent>
+   828→              {DOT_STYLES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+   829→            </SelectContent>
+   830→          </Select>
+   831→        </div>
+   832→        <div className="space-y-1.5">
+   833→          <Label className="text-xs">Eye style</Label>
+   834→          <Select value={design.eyeStyle} onValueChange={(v) => update('eyeStyle', v as QrDesign['eyeStyle'])}>
+   835→            <SelectTrigger className="h-8 text-xs w-full"><SelectValue /></SelectTrigger>
+   836→            <SelectContent>
+   837→              {EYE_STYLES.map((d) => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+   838→            </SelectContent>
+   839→          </Select>
+   840→        </div>
+   841→      </div>
+   842→
+   843→      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+   844→        <div className="space-y-1.5">
+   845→          <Label className="text-xs">Error correction</Label>
+   846→          <Select value={design.errorCorrection} onValueChange={(v) => update('errorCorrection', v as QrDesign['errorCorrection'])}>
+   847→            <SelectTrigger className="h-8 text-xs w-full"><SelectValue /></SelectTrigger>
+   848→            <SelectContent>
+   849→              {ERROR_LEVELS.map((l) => <SelectItem key={l} value={l}>Level {l}</SelectItem>)}
+   850→            </SelectContent>
+   851→          </Select>
+   852→        </div>
+   853→        <div className="space-y-1.5">
+   854→          <Label className="text-xs">Logo</Label>
+   855→          <div className="flex items-center gap-2">
+   856→            <Button
+   857→              type="button"
+   858→              variant="outline"
+   859→              size="sm"
+   860→              className="h-8 text-xs"
+   861→              onClick={() => logoRef.current?.click()}
+   862→            >
+   863→              <UploadCloud className="mr-1 h-3 w-3" /> Upload
+   864→            </Button>
+   865→            {logoDataUrl && (
+   866→              <Button
+   867→                type="button"
+   868→                variant="ghost"
+   869→                size="sm"
+   870→                className="h-8 text-xs"
+   871→                onClick={() => setLogoDataUrl(null)}
+   872→              >
+   873→                <X className="h-3 w-3" />
+   874→              </Button>
+   875→            )}
+   876→            <input
+   877→              ref={logoRef}
+   878→              type="file"
+   879→              accept="image/*"
+   880→              className="hidden"
+   881→              onChange={(e) => onLogo(e.target.files?.[0])}
+   882→            />
+   883→          </div>
+   884→        </div>
+   885→      </div>
+   886→    </div>
+   887→  )
+   888→}
+   889→
+   890→export default BulkView
+   891→

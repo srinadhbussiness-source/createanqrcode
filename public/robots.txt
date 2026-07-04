@@ -1,0 +1,6 @@
+# robots.txt — allow all crawlers
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://createanqrcode.com/sitemap.xml

@@ -1,0 +1,683 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import { useState, useMemo, useEffect } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import { toast } from 'sonner'
+     6→     6→import {
+     7→     7→  Plus, Search, LayoutGrid, List, MoreVertical, Star, Copy, Trash2, Archive,
+     8→     8→  FolderInput, Tag, Download, Pencil, QrCode as QrCodeIcon,
+     9→     9→  Lock, Eye, Filter, ChevronDown, X, Check, BarChart3,
+    10→    10→} from 'lucide-react'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Card, CardContent } from '@/components/ui/card'
+    13→    13→import { Input } from '@/components/ui/input'
+    14→    14→import { Badge } from '@/components/ui/badge'
+    15→    15→import { Checkbox } from '@/components/ui/checkbox'
+    16→    16→import {
+    17→    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→    18→} from '@/components/ui/select'
+    19→    19→import {
+    20→    20→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+    21→    21→} from '@/components/ui/dropdown-menu'
+    22→    22→import {
+    23→    23→  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+    24→    24→} from '@/components/ui/dialog'
+    25→    25→import {
+    26→    26→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+    27→    27→  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    28→    28→} from '@/components/ui/alert-dialog'
+    29→    29→import { Label } from '@/components/ui/label'
+    30→    30→import { QrPreview } from '@/components/qr-preview'
+    31→    31→import { useRouterStore } from '@/lib/stores'
+    32→    32→import { api } from '@/lib/api'
+    33→    33→import { QR_TYPE_MAP } from '@/lib/qr-types'
+    34→    34→import type { QrCodeRecord, FolderRecord } from '@/lib/types'
+    35→    35→import { formatDate, formatNumber } from '@/lib/format'
+    36→    36→import { downloadQrPng, downloadQrSvg } from '@/lib/qr-generate'
+    37→    37→import { cn } from '@/lib/utils'
+    38→    38→
+    39→    39→type SortKey = 'newest' | 'oldest' | 'scans' | 'az' | 'za'
+    40→    40→type StatusFilter = 'all' | 'active' | 'paused' | 'expired' | 'archived' | 'favorites'
+    41→    41→
+    42→    42→const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+    43→    43→  active: { label: 'Active', className: 'bg-foreground/5 text-foreground border-border' },
+    44→    44→  paused: { label: 'Paused', className: 'bg-muted text-muted-foreground border-border' },
+    45→    45→  expired: { label: 'Expired', className: 'bg-muted text-muted-foreground border-border' },
+    46→    46→  archived: { label: 'Archived', className: 'bg-muted text-muted-foreground border-border' },
+    47→    47→  trashed: { label: 'Trashed', className: 'bg-destructive/15 text-destructive border-destructive/30' },
+    48→    48→}
+    49→    49→
+    50→    50→export function QrCodesView() {
+    51→    51→  const navigate = useRouterStore((s) => s.navigate)
+    52→    52→  const params = useRouterStore((s) => s.params)
+    53→    53→  const qc = useQueryClient()
+    54→    54→
+    55→    55→  // Filter state
+    56→    56→  const [search, setSearch] = useState('')
+    57→    57→  const [debounced, setDebounced] = useState('')
+    58→    58→  const [typeFilter, setTypeFilter] = useState<string>('all')
+    59→    59→  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+    60→    60→  const [from, setFrom] = useState('')
+    61→    61→  const [to, setTo] = useState('')
+    62→    62→  const [sort, setSort] = useState<SortKey>('newest')
+    63→    63→  const [view, setView] = useState<'grid' | 'list'>('grid')
+    64→    64→
+    65→    65→  // Selection
+    66→    66→  const [selected, setSelected] = useState<Record<string, boolean>>({})
+    67→    67→  const [tagDialogOpen, setTagDialogOpen] = useState(false)
+    68→    68→  const [moveDialogOpen, setMoveDialogOpen] = useState(false)
+    69→    69→  const [newTag, setNewTag] = useState('')
+    70→    70→
+    71→    71→  useEffect(() => {
+    72→    72→    const t = setTimeout(() => setDebounced(search), 300)
+    73→    73→    return () => clearTimeout(t)
+    74→    74→  }, [search])
+    75→    75→
+    76→    76→  const { data, isLoading } = useQuery({
+    77→    77→    queryKey: ['qr-codes'],
+    78→    78→    queryFn: () => api.get<{ data: QrCodeRecord[] }>('/api/qr-codes'),
+    79→    79→  })
+    80→    80→  const { data: foldersData } = useQuery({
+    81→    81→    queryKey: ['folders'],
+    82→    82→    queryFn: () => api.get<{ data: FolderRecord[] }>('/api/folders'),
+    83→    83→  })
+    84→    84→  const folders = foldersData?.data ?? []
+    85→    85→  const codes = data?.data ?? []
+    86→    86→
+    87→    87→  const folderParam = params.folder
+    88→    88→  const folderName = folders.find((f) => f.id === folderParam)?.name
+    89→    89→
+    90→    90→  const filtered = useMemo(() => {
+    91→    91→    let out = codes
+    92→    92→    if (folderParam) out = out.filter((c) => c.folderId === folderParam)
+    93→    93→    if (debounced) {
+    94→    94→      const q = debounced.toLowerCase()
+    95→    95→      out = out.filter((c) =>
+    96→    96→        c.title.toLowerCase().includes(q) ||
+    97→    97→        c.tags.some((t) => t.toLowerCase().includes(q)) ||
+    98→    98→        c.qrType.toLowerCase().includes(q)
+    99→    99→      )
+   100→   100→    }
+   101→   101→    if (typeFilter !== 'all') out = out.filter((c) => c.qrType === typeFilter)
+   102→   102→    if (statusFilter === 'favorites') out = out.filter((c) => c.favorite)
+   103→   103→    else if (statusFilter !== 'all') out = out.filter((c) => c.status === statusFilter)
+   104→   104→    if (from) out = out.filter((c) => c.createdAt >= from)
+   105→   105→    if (to) out = out.filter((c) => c.createdAt <= to + 'T23:59:59')
+   106→   106→    out = [...out].sort((a, b) => {
+   107→   107→      if (sort === 'newest') return b.createdAt.localeCompare(a.createdAt)
+   108→   108→      if (sort === 'oldest') return a.createdAt.localeCompare(b.createdAt)
+   109→   109→      if (sort === 'scans') return b.scanCount - a.scanCount
+   110→   110→      if (sort === 'az') return a.title.localeCompare(b.title)
+   111→   111→      if (sort === 'za') return b.title.localeCompare(a.title)
+   112→   112→      return 0
+   113→   113→    })
+   114→   114→    return out
+   115→   115→  }, [codes, debounced, typeFilter, statusFilter, from, to, sort, folderParam])
+   116→   116→
+   117→   117→  const selectedIds = Object.keys(selected).filter((k) => selected[k])
+   118→   118→  const selectedCount = selectedIds.length
+   119→   119→  const allSelected = filtered.length > 0 && selectedIds.length === filtered.length
+   120→   120→
+   121→   121→  function toggleSelect(id: string) {
+   122→   122→    setSelected((s) => ({ ...s, [id]: !s[id] }))
+   123→   123→  }
+   124→   124→  function selectAll() {
+   125→   125→    if (allSelected) setSelected({})
+   126→   126→    else setSelected(Object.fromEntries(filtered.map((c) => [c.id, true])))
+   127→   127→  }
+   128→   128→  function clearSelection() { setSelected({}) }
+   129→   129→
+   130→   130→  const bulkMutation = useMutation({
+   131→   131→    mutationFn: (vars: { action: 'archive' | 'trash' | 'restore' | 'delete' | 'moveFolder' | 'addTag'; value?: string }) =>
+   132→   132→      api.post('/api/qr-codes/bulk', { ids: selectedIds, action: vars.action, value: vars.value }),
+   133→   133→    onSuccess: () => {
+   134→   134→      qc.invalidateQueries({ queryKey: ['qr-codes'] })
+   135→   135→      qc.invalidateQueries({ queryKey: ['folders'] })
+   136→   136→      clearSelection()
+   137→   137→      toast.success('Bulk action applied')
+   138→   138→    },
+   139→   139→    onError: () => toast.error('Bulk action failed'),
+   140→   140→  })
+   141→   141→
+   142→   142→  const patchMutation = useMutation({
+   143→   143→    mutationFn: ({ id, patch }: { id: string; patch: Record<string, unknown> }) =>
+   144→   144→      api.patch(`/api/qr-codes/${id}`, patch),
+   145→   145→    onSuccess: () => qc.invalidateQueries({ queryKey: ['qr-codes'] }),
+   146→   146→    onError: () => toast.error('Update failed'),
+   147→   147→  })
+   148→   148→
+   149→   149→  const duplicateMutation = useMutation({
+   150→   150→    mutationFn: (id: string) => api.post<{ id: string }>(`/api/qr-codes/${id}/duplicate`),
+   151→   151→    onSuccess: () => {
+   152→   152→      qc.invalidateQueries({ queryKey: ['qr-codes'] })
+   153→   153→      toast.success('QR code duplicated')
+   154→   154→    },
+   155→   155→    onError: () => toast.error('Duplicate failed'),
+   156→   156→  })
+   157→   157→
+   158→   158→  async function handleDownload(code: QrCodeRecord, kind: 'png' | 'svg') {
+   159→   159→    try {
+   160→   160→      const payload = code.staticPayload || code.destinationUrl || ''
+   161→   161→      const filename = code.title.replace(/[^a-z0-9-_]+/gi, '_')
+   162→   162→      if (kind === 'png') await downloadQrPng(payload, code.design, code.logoDataUrl, filename)
+   163→   163→      else await downloadQrSvg(payload, code.design, code.logoDataUrl, filename)
+   164→   164→      toast.success(`Downloading ${kind.toUpperCase()}`)
+   165→   165→    } catch {
+   166→   166→      toast.error('Download failed')
+   167→   167→    }
+   168→   168→  }
+   169→   169→
+   170→   170→  function applyAddTag() {
+   171→   171→    if (!newTag.trim()) return
+   172→   172→    bulkMutation.mutate({ action: 'addTag', value: newTag.trim() })
+   173→   173→    setNewTag('')
+   174→   174→    setTagDialogOpen(false)
+   175→   175→  }
+   176→   176→  function applyMoveFolder(folderId: string | null) {
+   177→   177→    bulkMutation.mutate({ action: 'moveFolder', value: folderId ?? '' })
+   178→   178→    setMoveDialogOpen(false)
+   179→   179→  }
+   180→   180→
+   181→   181→  const hasFilters = debounced || typeFilter !== 'all' || statusFilter !== 'all' || from || to
+   182→   182→
+   183→   183→  return (
+   184→   184→    <div className="space-y-5 p-4 sm:p-6 lg:p-8">
+   185→   185→      {/* Header */}
+   186→   186→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   187→   187→        <div>
+   188→   188→          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+   189→   189→            {folderName ? folderName : 'My QR Codes'}
+   190→   190→          </h1>
+   191→   191→          <p className="mt-1 text-sm text-muted-foreground">
+   192→   192→            {folderName
+   193→   193→              ? `Showing codes in this folder (${filtered.length})`
+   194→   194→              : `Manage, organize, and analyze all your QR codes (${filtered.length})`}
+   195→   195→          </p>
+   196→   196→        </div>
+   197→   197→        <Button onClick={() => navigate('create')} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   198→   198→          <Plus className="mr-2 h-4 w-4" />
+   199→   199→          Create New
+   200→   200→        </Button>
+   201→   201→      </div>
+   202→   202→
+   203→   203→      {/* Filter bar */}
+   204→   204→      {isLoading ? (
+   205→   205→        <Card className="border-border">
+   206→   206→          <CardContent className="space-y-3 p-4">
+   207→   207→            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+   208→   208→              <div className="skeleton-shimmer h-9 w-full rounded-md lg:col-span-2" />
+   209→   209→              <div className="skeleton-shimmer h-9 w-full rounded-md" />
+   210→   210→              <div className="skeleton-shimmer h-9 w-full rounded-md" />
+   211→   211→            </div>
+   212→   212→            <div className="flex flex-wrap items-center gap-2">
+   213→   213→              <div className="skeleton-shimmer h-9 w-28 rounded-md" />
+   214→   214→              <div className="skeleton-shimmer h-9 w-28 rounded-md" />
+   215→   215→              <div className="skeleton-shimmer h-9 w-40 rounded-md" />
+   216→   216→              <div className="skeleton-shimmer h-9 w-20 rounded-md" />
+   217→   217→            </div>
+   218→   218→          </CardContent>
+   219→   219→        </Card>
+   220→   220→      ) : (
+   221→   221→      <Card className="border-border">
+   222→   222→        <CardContent className="p-4">
+   223→   223→          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+   224→   224→            <div className="relative lg:col-span-2">
+   225→   225→              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   226→   226→              <Input
+   227→   227→                placeholder="Search by title, tag, or type..."
+   228→   228→                value={search}
+   229→   229→                onChange={(e) => setSearch(e.target.value)}
+   230→   230→                className="pl-9"
+   231→   231→              />
+   232→   232→            </div>
+   233→   233→            <Select value={typeFilter} onValueChange={setTypeFilter}>
+   234→   234→              <SelectTrigger className="w-full">
+   235→   235→                <Filter className="mr-2 h-3.5 w-3.5 text-muted-foreground" />
+   236→   236→                <SelectValue placeholder="All types" />
+   237→   237→              </SelectTrigger>
+   238→   238→              <SelectContent>
+   239→   239→                <SelectItem value="all">All types</SelectItem>
+   240→   240→                {Object.values(QR_TYPE_MAP).map((t) => (
+   241→   241→                  <SelectItem key={t.id} value={t.id}>{t.label}</SelectItem>
+   242→   242→                ))}
+   243→   243→              </SelectContent>
+   244→   244→            </Select>
+   245→   245→            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+   246→   246→              <SelectTrigger className="w-full">
+   247→   247→                <SelectValue placeholder="Status" />
+   248→   248→              </SelectTrigger>
+   249→   249→              <SelectContent>
+   250→   250→                <SelectItem value="all">All status</SelectItem>
+   251→   251→                <SelectItem value="active">Active</SelectItem>
+   252→   252→                <SelectItem value="paused">Paused</SelectItem>
+   253→   253→                <SelectItem value="expired">Expired</SelectItem>
+   254→   254→                <SelectItem value="archived">Archived</SelectItem>
+   255→   255→                <SelectItem value="favorites">★ Favorites</SelectItem>
+   256→   256→              </SelectContent>
+   257→   257→            </Select>
+   258→   258→          </div>
+   259→   259→
+   260→   260→          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   261→   261→            <div className="flex flex-wrap items-center gap-2">
+   262→   262→              <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-9 w-auto text-xs" />
+   263→   263→              <span className="text-xs text-muted-foreground">to</span>
+   264→   264→              <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-9 w-auto text-xs" />
+   265→   265→              {hasFilters && (
+   266→   266→                <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setTypeFilter('all'); setStatusFilter('all'); setFrom(''); setTo('') }}>
+   267→   267→                  <X className="mr-1 h-3 w-3" /> Clear
+   268→   268→                </Button>
+   269→   269→              )}
+   270→   270→            </div>
+   271→   271→            <div className="flex items-center gap-2">
+   272→   272→              <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+   273→   273→                <SelectTrigger size="sm" className="w-40">
+   274→   274→                  <SelectValue />
+   275→   275→                </SelectTrigger>
+   276→   276→                <SelectContent>
+   277→   277→                  <SelectItem value="newest">Newest first</SelectItem>
+   278→   278→                  <SelectItem value="oldest">Oldest first</SelectItem>
+   279→   279→                  <SelectItem value="scans">Most scans</SelectItem>
+   280→   280→                  <SelectItem value="az">A → Z</SelectItem>
+   281→   281→                  <SelectItem value="za">Z → A</SelectItem>
+   282→   282→                </SelectContent>
+   283→   283→              </Select>
+   284→   284→              <div className="flex overflow-hidden rounded-md border border-border">
+   285→   285→                <Button
+   286→   286→                  variant={view === 'grid' ? 'default' : 'ghost'}
+   287→   287→                  size="icon"
+   288→   288→                  className={cn('h-9 w-9 rounded-none', view === 'grid' && 'bg-brand text-brand-foreground hover:bg-brand/90')}
+   289→   289→                  onClick={() => setView('grid')}
+   290→   290→                >
+   291→   291→                  <LayoutGrid className="h-4 w-4" />
+   292→   292→                </Button>
+   293→   293→                <Button
+   294→   294→                  variant={view === 'list' ? 'default' : 'ghost'}
+   295→   295→                  size="icon"
+   296→   296→                  className={cn('h-9 w-9 rounded-none', view === 'list' && 'bg-brand text-brand-foreground hover:bg-brand/90')}
+   297→   297→                  onClick={() => setView('list')}
+   298→   298→                >
+   299→   299→                  <List className="h-4 w-4" />
+   300→   300→                </Button>
+   301→   301→              </div>
+   302→   302→            </div>
+   303→   303→          </div>
+   304→   304→        </CardContent>
+   305→   305→      </Card>
+   306→   306→      )}
+   307→   307→
+   308→   308→      {/* Bulk actions bar */}
+   309→   309→      {selectedCount > 0 && (
+   310→   310→        <div className="sticky top-16 z-20 flex flex-wrap items-center gap-2 rounded-lg border border-brand/30 bg-card p-3 shadow-md">
+   311→   311→          <span className="text-sm font-medium">
+   312→   312→            {selectedCount} selected
+   313→   313→          </span>
+   314→   314→          <Button variant="ghost" size="sm" onClick={selectAll} className="text-xs">
+   315→   315→            {allSelected ? 'Deselect all' : 'Select all'}
+   316→   316→          </Button>
+   317→   317→          <div className="flex-1" />
+   318→   318→          <Button variant="outline" size="sm" onClick={() => setMoveDialogOpen(true)}>
+   319→   319→            <FolderInput className="mr-1.5 h-3.5 w-3.5" /> Move
+   320→   320→          </Button>
+   321→   321→          <Button variant="outline" size="sm" onClick={() => setTagDialogOpen(true)}>
+   322→   322→            <Tag className="mr-1.5 h-3.5 w-3.5" /> Tag
+   323→   323→          </Button>
+   324→   324→          <Button variant="outline" size="sm" onClick={() => bulkMutation.mutate({ action: 'archive' })}>
+   325→   325→            <Archive className="mr-1.5 h-3.5 w-3.5" /> Archive
+   326→   326→          </Button>
+   327→   327→          <Button variant="outline" size="sm" onClick={() => bulkMutation.mutate({ action: 'trash' })}
+   328→   328→            className="text-destructive hover:bg-destructive/10">
+   329→   329→            <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Trash
+   330→   330→          </Button>
+   331→   331→          <Button variant="ghost" size="sm" onClick={clearSelection}>
+   332→   332→            <X className="h-3.5 w-3.5" />
+   333→   333→          </Button>
+   334→   334→        </div>
+   335→   335→      )}
+   336→   336→
+   337→   337→      {/* List / Grid */}
+   338→   338→      {isLoading ? (
+   339→   339→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+   340→   340→          {Array.from({ length: 8 }).map((_, i) => (
+   341→   341→            <div key={i} className="space-y-3 rounded-xl border border-border p-4">
+   342→   342→              <div className="flex justify-center">
+   343→   343→                <div className="skeleton-shimmer aspect-square w-32 rounded-xl" />
+   344→   344→              </div>
+   345→   345→              <div className="flex items-center gap-1.5">
+   346→   346→                <div className="skeleton-shimmer h-5 w-12 rounded" />
+   347→   347→                <div className="skeleton-shimmer h-5 w-10 rounded" />
+   348→   348→              </div>
+   349→   349→              <div className="skeleton-shimmer h-4 w-3/4 rounded" />
+   350→   350→              <div className="skeleton-shimmer h-3 w-1/2 rounded" />
+   351→   351→              <div className="flex items-center justify-between gap-2 border-t border-border pt-3">
+   352→   352→                <div className="skeleton-shimmer h-3 w-16 rounded" />
+   353→   353→                <div className="skeleton-shimmer h-3 w-12 rounded" />
+   354→   354→              </div>
+   355→   355→            </div>
+   356→   356→          ))}
+   357→   357→        </div>
+   358→   358→      ) : filtered.length === 0 ? (
+   359→   359→        <Card className="border-dashed border-border">
+   360→   360→          <CardContent className="flex flex-col items-center justify-center gap-4 py-20 text-center">
+   361→   361→            <div className="grid h-16 w-16 place-items-center rounded-2xl bg-neutral-100 text-foreground dark:bg-neutral-900">
+   362→   362→              <QrCodeIcon className="h-8 w-8" />
+   363→   363→            </div>
+   364→   364→            <div>
+   365→   365→              <h3 className="text-lg font-semibold">
+   366→   366→                {hasFilters ? 'No codes match your filters' : 'No QR codes yet'}
+   367→   367→              </h3>
+   368→   368→              <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+   369→   369→                {hasFilters
+   370→   370→                  ? 'Try adjusting your search or filter criteria.'
+   371→   371→                  : 'Create your first QR code to see it here.'}
+   372→   372→              </p>
+   373→   373→            </div>
+   374→   374→            <Button onClick={() => navigate('create')} className="btn-press bg-brand text-brand-foreground hover:bg-brand/90">
+   375→   375→              <Plus className="mr-2 h-4 w-4" /> Create QR Code
+   376→   376→            </Button>
+   377→   377→          </CardContent>
+   378→   378→        </Card>
+   379→   379→      ) : view === 'grid' ? (
+   380→   380→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+   381→   381→          {filtered.map((c) => (
+   382→   382→            <GridCard
+   383→   383→              key={c.id}
+   384→   384→              code={c}
+   385→   385→              selected={!!selected[c.id]}
+   386→   386→              onToggleSelect={() => toggleSelect(c.id)}
+   387→   387→              onOpen={() => navigate('qr-detail', { id: c.id })}
+   388→   388→              onToggleFavorite={() => patchMutation.mutate({ id: c.id, patch: { favorite: !c.favorite } })}
+   389→   389→              onDuplicate={() => duplicateMutation.mutate(c.id)}
+   390→   390→              onArchive={() => patchMutation.mutate({ id: c.id, patch: { archived: true, status: 'archived' } })}
+   391→   391→              onTrash={() => patchMutation.mutate({ id: c.id, patch: { trashed: true, status: 'trashed' } })}
+   392→   392→              onDownloadPng={() => handleDownload(c, 'png')}
+   393→   393→              onDownloadSvg={() => handleDownload(c, 'svg')}
+   394→   394→            />
+   395→   395→          ))}
+   396→   396→        </div>
+   397→   397→      ) : (
+   398→   398→        <Card className="border-border">
+   399→   399→          <CardContent className="divide-y divide-border p-0">
+   400→   400→            {filtered.map((c) => (
+   401→   401→              <ListRow
+   402→   402→                key={c.id}
+   403→   403→                code={c}
+   404→   404→                selected={!!selected[c.id]}
+   405→   405→                onToggleSelect={() => toggleSelect(c.id)}
+   406→   406→                onOpen={() => navigate('qr-detail', { id: c.id })}
+   407→   407→                onToggleFavorite={() => patchMutation.mutate({ id: c.id, patch: { favorite: !c.favorite } })}
+   408→   408→                onDuplicate={() => duplicateMutation.mutate(c.id)}
+   409→   409→                onArchive={() => patchMutation.mutate({ id: c.id, patch: { archived: true, status: 'archived' } })}
+   410→   410→                onTrash={() => patchMutation.mutate({ id: c.id, patch: { trashed: true, status: 'trashed' } })}
+   411→   411→                onDownloadPng={() => handleDownload(c, 'png')}
+   412→   412→                onDownloadSvg={() => handleDownload(c, 'svg')}
+   413→   413→              />
+   414→   414→            ))}
+   415→   415→          </CardContent>
+   416→   416→        </Card>
+   417→   417→      )}
+   418→   418→
+   419→   419→      {/* Tag dialog */}
+   420→   420→      <Dialog open={tagDialogOpen} onOpenChange={setTagDialogOpen}>
+   421→   421→        <DialogContent>
+   422→   422→          <DialogHeader>
+   423→   423→            <DialogTitle>Add tag to {selectedCount} codes</DialogTitle>
+   424→   424→            <DialogDescription>Type a tag name. Existing tags will not be duplicated.</DialogDescription>
+   425→   425→          </DialogHeader>
+   426→   426→          <div className="space-y-2">
+   427→   427→            <Label htmlFor="newTag">Tag name</Label>
+   428→   428→            <Input
+   429→   429→              id="newTag"
+   430→   430→              placeholder="e.g. marketing, summer-campaign"
+   431→   431→              value={newTag}
+   432→   432→              onChange={(e) => setNewTag(e.target.value)}
+   433→   433→              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyAddTag() } }}
+   434→   434→            />
+   435→   435→          </div>
+   436→   436→          <DialogFooter>
+   437→   437→            <Button variant="outline" onClick={() => setTagDialogOpen(false)}>Cancel</Button>
+   438→   438→            <Button onClick={applyAddTag} disabled={!newTag.trim()} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   439→   439→              <Tag className="mr-2 h-4 w-4" /> Add tag
+   440→   440→            </Button>
+   441→   441→          </DialogFooter>
+   442→   442→        </DialogContent>
+   443→   443→      </Dialog>
+   444→   444→
+   445→   445→      {/* Move-to-folder dialog */}
+   446→   446→      <Dialog open={moveDialogOpen} onOpenChange={setMoveDialogOpen}>
+   447→   447→        <DialogContent>
+   448→   448→          <DialogHeader>
+   449→   449→            <DialogTitle>Move {selectedCount} codes</DialogTitle>
+   450→   450→            <DialogDescription>Choose a destination folder.</DialogDescription>
+   451→   451→          </DialogHeader>
+   452→   452→          <div className="max-h-64 space-y-1 overflow-y-auto scroll-thin">
+   453→   453→            <button
+   454→   454→              onClick={() => applyMoveFolder(null)}
+   455→   455→              className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+   456→   456→            >
+   457→   457→              <span>No folder (unfile)</span>
+   458→   458→              <X className="h-4 w-4 text-muted-foreground" />
+   459→   459→            </button>
+   460→   460→            {folders.map((f) => (
+   461→   461→              <button
+   462→   462→                key={f.id}
+   463→   463→                onClick={() => applyMoveFolder(f.id)}
+   464→   464→                className="flex w-full items-center gap-3 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+   465→   465→              >
+   466→   466→                <span className="h-3 w-3 rounded-full" style={{ background: f.color }} />
+   467→   467→                <span className="flex-1 text-left">{f.name}</span>
+   468→   468→                <span className="text-xs text-muted-foreground">{f.count} codes</span>
+   469→   469→              </button>
+   470→   470→            ))}
+   471→   471→            {folders.length === 0 && (
+   472→   472→              <p className="px-2 py-4 text-center text-sm text-muted-foreground">
+   473→   473→                You have no folders yet. Create one from the Folders page.
+   474→   474→              </p>
+   475→   475→            )}
+   476→   476→          </div>
+   477→   477→        </DialogContent>
+   478→   478→      </Dialog>
+   479→   479→    </div>
+   480→   480→  )
+   481→   481→}
+   482→   482→
+   483→   483→function StatusBadge({ status }: { status: string }) {
+   484→   484→  const cfg = STATUS_BADGE[status] ?? STATUS_BADGE.active
+   485→   485→  return (
+   486→   486→    <Badge variant="outline" className={cn('text-[10px]', cfg.className)}>
+   487→   487→      {cfg.label}
+   488→   488→    </Badge>
+   489→   489→  )
+   490→   490→}
+   491→   491→
+   492→   492→interface CardActionProps {
+   493→   493→  code: QrCodeRecord
+   494→   494→  selected: boolean
+   495→   495→  onToggleSelect: () => void
+   496→   496→  onOpen: () => void
+   497→   497→  onToggleFavorite: () => void
+   498→   498→  onDuplicate: () => void
+   499→   499→  onArchive: () => void
+   500→   500→  onTrash: () => void
+   501→   501→  onDownloadPng: () => void
+   502→   502→  onDownloadSvg: () => void
+   503→   503→}
+   504→   504→
+   505→   505→function GridCard(props: CardActionProps) {
+   506→   506→  const { code, selected, onToggleSelect, onOpen, onToggleFavorite, onDuplicate, onArchive, onTrash, onDownloadPng, onDownloadSvg } = props
+   507→   507→  const typeDef = QR_TYPE_MAP[code.qrType]
+   508→   508→  const Icon = typeDef?.icon ?? QrCodeIcon
+   509→   509→  return (
+   510→   510→    <Card
+   511→   511→      className={cn(
+   512→   512→        'group relative overflow-hidden border-border card-hover',
+   513→   513→        selected && 'ring-2 ring-brand'
+   514→   514→      )}
+   515→   515→    >
+   516→   516→      {/* Top accent — slides in on hover (monochrome) */}
+   517→   517→      <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 origin-left scale-x-0 bg-foreground transition-transform duration-150 group-hover:scale-x-100" />
+   518→   518→
+   519→   519→      <CardContent className="p-4">
+   520→   520→        {/* Selection checkbox */}
+   521→   521→        <div className="absolute left-3 top-3 z-10 opacity-0 transition-opacity group-hover:opacity-100 data-[checked=true]:opacity-100" data-checked={selected}>
+   522→   522→          <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label="Select code" />
+   523→   523→        </div>
+   524→   524→
+   525→   525→        {/* Favorite — smooth scale transition */}
+   526→   526→        <button
+   527→   527→          onClick={(e) => { e.stopPropagation(); onToggleFavorite() }}
+   528→   528→          className="absolute right-3 top-3 z-10 rounded-md p-1 transition-colors hover:bg-accent"
+   529→   529→          aria-label="Toggle favorite"
+   530→   530→        >
+   531→   531→          <Star className={cn(
+   532→   532→            'h-4 w-4 transition-transform duration-150 hover:scale-110',
+   533→   533→            code.favorite ? 'fill-foreground text-foreground' : 'text-muted-foreground'
+   534→   534→          )} />
+   535→   535→        </button>
+   536→   536→
+   537→   537→        <div onClick={onOpen} className="cursor-pointer">
+   538→   538→          <div className="mb-3 mt-2 flex justify-center">
+   539→   539→            <div className="rounded-xl bg-white p-2 shadow-sm ring-1 ring-border">
+   540→   540→              <QrPreview
+   541→   541→                payload={code.staticPayload || code.destinationUrl || ''}
+   542→   542→                design={code.design}
+   543→   543→                logoDataUrl={code.logoDataUrl}
+   544→   544→                size={120}
+   545→   545→              />
+   546→   546→            </div>
+   547→   547→          </div>
+   548→   548→
+   549→   549→          <div className="flex items-center gap-1.5">
+   550→   550→            <Badge variant="secondary" className="gap-1 text-[10px]">
+   551→   551→              <Icon className="h-2.5 w-2.5" />
+   552→   552→              {typeDef?.label ?? code.qrType}
+   553→   553→            </Badge>
+   554→   554→            {code.isDynamic && (
+   555→   555→              <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">Dyn</Badge>
+   556→   556→            )}
+   557→   557→            <StatusBadge status={code.status} />
+   558→   558→          </div>
+   559→   559→
+   560→   560→          <h3 className="mt-1.5 truncate font-semibold">{code.title}</h3>
+   561→   561→          <p className="text-xs text-muted-foreground">{formatDate(code.createdAt)}</p>
+   562→   562→
+   563→   563→          {code.tags.length > 0 && (
+   564→   564→            <div className="mt-2 flex flex-wrap gap-1">
+   565→   565→              {code.tags.slice(0, 3).map((t) => (
+   566→   566→                <span key={t} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">#{t}</span>
+   567→   567→              ))}
+   568→   568→              {code.tags.length > 3 && (
+   569→   569→                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">+{code.tags.length - 3}</span>
+   570→   570→              )}
+   571→   571→            </div>
+   572→   572→          )}
+   573→   573→        </div>
+   574→   574→
+   575→   575→        {/* Footer — scan count (monochrome) + updated date + 3-dot menu */}
+   576→   576→        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3">
+   577→   577→          <div className="flex min-w-0 items-center gap-3 text-[10px] text-muted-foreground">
+   578→   578→            {code.isDynamic ? (
+   579→   579→              <span className="flex items-center gap-1">
+   580→   580→                <BarChart3 className="h-3 w-3" /> {formatNumber(code.scanCount)}
+   581→   581→              </span>
+   582→   582→            ) : (
+   583→   583→              <span className="flex items-center gap-1">
+   584→   584→                <Lock className="h-3 w-3" /> Static
+   585→   585→              </span>
+   586→   586→            )}
+   587→   587→            <span className="truncate">{formatDate(code.updatedAt)}</span>
+   588→   588→          </div>
+   589→   589→          <DropdownMenu>
+   590→   590→            <DropdownMenuTrigger asChild>
+   591→   591→              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+   592→   592→                <MoreVertical className="h-4 w-4" />
+   593→   593→              </Button>
+   594→   594→            </DropdownMenuTrigger>
+   595→   595→            <DropdownMenuContent align="end" className="w-44">
+   596→   596→              <DropdownMenuItem onClick={onOpen}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+   597→   597→              <DropdownMenuItem onClick={onDuplicate}><Copy className="mr-2 h-4 w-4" /> Duplicate</DropdownMenuItem>
+   598→   598→              <DropdownMenuItem onClick={onToggleFavorite}>
+   599→   599→                <Star className="mr-2 h-4 w-4" /> {code.favorite ? 'Unfavorite' : 'Favorite'}
+   600→   600→              </DropdownMenuItem>
+   601→   601→              <DropdownMenuSeparator />
+   602→   602→              <DropdownMenuItem onClick={onDownloadPng}><Download className="mr-2 h-4 w-4" /> Download PNG</DropdownMenuItem>
+   603→   603→              <DropdownMenuItem onClick={onDownloadSvg}><Download className="mr-2 h-4 w-4" /> Download SVG</DropdownMenuItem>
+   604→   604→              <DropdownMenuSeparator />
+   605→   605→              <DropdownMenuItem onClick={onArchive}><Archive className="mr-2 h-4 w-4" /> Archive</DropdownMenuItem>
+   606→   606→              <DropdownMenuItem onClick={onTrash} variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Move to Trash</DropdownMenuItem>
+   607→   607→            </DropdownMenuContent>
+   608→   608→          </DropdownMenu>
+   609→   609→        </div>
+   610→   610→      </CardContent>
+   611→   611→    </Card>
+   612→   612→  )
+   613→   613→}
+   614→   614→
+   615→   615→function ListRow(props: CardActionProps) {
+   616→   616→  const { code, selected, onToggleSelect, onOpen, onToggleFavorite, onDuplicate, onArchive, onTrash, onDownloadPng, onDownloadSvg } = props
+   617→   617→  const typeDef = QR_TYPE_MAP[code.qrType]
+   618→   618→  const Icon = typeDef?.icon ?? QrCodeIcon
+   619→   619→  return (
+   620→   620→    <div className={cn('flex items-center gap-3 p-3 transition-colors hover:bg-accent/50', selected && 'bg-brand-muted/40')}>
+   621→   621→      <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label="Select code" />
+   622→   622→      <div onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3">
+   623→   623→        <div className="hidden shrink-0 rounded-lg bg-white p-1 ring-1 ring-border sm:block">
+   624→   624→          <QrPreview
+   625→   625→            payload={code.staticPayload || code.destinationUrl || ''}
+   626→   626→            design={code.design}
+   627→   627→            logoDataUrl={code.logoDataUrl}
+   628→   628→            size={56}
+   629→   629→          />
+   630→   630→        </div>
+   631→   631→        <div className="min-w-0 flex-1">
+   632→   632→          <div className="flex items-center gap-1.5">
+   633→   633→            <Badge variant="secondary" className="gap-1 text-[10px]">
+   634→   634→              <Icon className="h-2.5 w-2.5" />
+   635→   635→              {typeDef?.label ?? code.qrType}
+   636→   636→            </Badge>
+   637→   637→            <StatusBadge status={code.status} />
+   638→   638→            {code.isDynamic && (
+   639→   639→              <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">Dyn</Badge>
+   640→   640→            )}
+   641→   641→          </div>
+   642→   642→          <p className="mt-0.5 truncate font-semibold">{code.title}</p>
+   643→   643→          <p className="text-xs text-muted-foreground">Created {formatDate(code.createdAt)}</p>
+   644→   644→        </div>
+   645→   645→      </div>
+   646→   646→      <button onClick={onToggleFavorite} className="rounded-md p-1.5 hover:bg-accent" aria-label="Toggle favorite">
+   647→   647→        <Star className={cn('h-4 w-4', code.favorite ? 'fill-foreground text-foreground' : 'text-muted-foreground')} />
+   648→   648→      </button>
+   649→   649→      <div className="hidden w-20 text-right text-xs sm:block">
+   650→   650→        {code.isDynamic ? (
+   651→   651→          <span className="flex items-center justify-end gap-1 text-foreground">
+   652→   652→            <Eye className="h-3 w-3" /> {formatNumber(code.scanCount)}
+   653→   653→          </span>
+   654→   654→        ) : (
+   655→   655→          <span className="flex items-center justify-end gap-1 text-muted-foreground">
+   656→   656→            <Lock className="h-3 w-3" /> Static
+   657→   657→          </span>
+   658→   658→        )}
+   659→   659→      </div>
+   660→   660→      <DropdownMenu>
+   661→   661→        <DropdownMenuTrigger asChild>
+   662→   662→          <Button variant="ghost" size="icon" className="h-8 w-8">
+   663→   663→            <MoreVertical className="h-4 w-4" />
+   664→   664→          </Button>
+   665→   665→        </DropdownMenuTrigger>
+   666→   666→        <DropdownMenuContent align="end" className="w-44">
+   667→   667→          <DropdownMenuItem onClick={onOpen}><Pencil className="mr-2 h-4 w-4" /> Edit</DropdownMenuItem>
+   668→   668→          <DropdownMenuItem onClick={onDuplicate}><Copy className="mr-2 h-4 w-4" /> Duplicate</DropdownMenuItem>
+   669→   669→          <DropdownMenuItem onClick={onToggleFavorite}><Star className="mr-2 h-4 w-4" /> {code.favorite ? 'Unfavorite' : 'Favorite'}</DropdownMenuItem>
+   670→   670→          <DropdownMenuSeparator />
+   671→   671→          <DropdownMenuItem onClick={onDownloadPng}><Download className="mr-2 h-4 w-4" /> Download PNG</DropdownMenuItem>
+   672→   672→          <DropdownMenuItem onClick={onDownloadSvg}><Download className="mr-2 h-4 w-4" /> Download SVG</DropdownMenuItem>
+   673→   673→          <DropdownMenuSeparator />
+   674→   674→          <DropdownMenuItem onClick={onArchive}><Archive className="mr-2 h-4 w-4" /> Archive</DropdownMenuItem>
+   675→   675→          <DropdownMenuItem onClick={onTrash} variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Move to Trash</DropdownMenuItem>
+   676→   676→        </DropdownMenuContent>
+   677→   677→      </DropdownMenu>
+   678→   678→    </div>
+   679→   679→  )
+   680→   680→}
+   681→   681→
+   682→   682→export default QrCodesView
+   683→   683→

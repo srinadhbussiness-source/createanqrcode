@@ -1,0 +1,1050 @@
+     1→'use client'
+     2→
+     3→import { useState } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  ArrowLeft, Star, Download, Copy, ExternalLink, Pencil, Check, X, Loader2,
+     8→  QrCode as QrCodeIcon, Lock, Eye, Calendar, Hash, Tag, Folder as FolderIcon,
+     9→  Play, Pause, Sparkles, TrendingUp, Globe, ShieldCheck, Clock, BarChart3,
+    10→  Users, Smartphone, Monitor, Download as DownloadIcon, Zap, Share2,
+    11→} from 'lucide-react'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    14→import { Input } from '@/components/ui/input'
+    15→import { Label } from '@/components/ui/label'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Separator } from '@/components/ui/separator'
+    18→import {
+    19→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    20→} from '@/components/ui/select'
+    21→import {
+    22→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+    23→} from '@/components/ui/dropdown-menu'
+    24→import {
+    25→  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+    26→} from '@/components/ui/dialog'
+    27→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    28→import { QrPreview } from '@/components/qr-preview'
+    29→import { ScanPreview } from '@/components/scan-preview'
+    30→import { ShareDialog } from '@/components/share-dialog'
+    31→import { useRouterStore, useAuthStore, useUIStore } from '@/lib/stores'
+    32→import { api, ApiError } from '@/lib/api'
+    33→import { QR_TYPE_MAP } from '@/lib/qr-types'
+    34→import type { QrCodeRecord, FolderRecord, ScanRecord, RedirectRule } from '@/lib/types'
+    35→import { PLAN_LIMITS, type Plan } from '@/lib/types'
+    36→import { formatDate, formatDateTime, formatNumber } from '@/lib/format'
+    37→import { downloadQrPng, downloadQrSvg, downloadQrPdf } from '@/lib/qr-generate'
+    38→import { cn } from '@/lib/utils'
+    39→import {
+    40→  type AnalyticsSummary, type RangeKey,
+    41→  RANGE_OPTIONS, DEVICE_COLOR, UNIQUE_COLOR,
+    42→  StatCard, DonutCard, Heatmap, EmptyChart,
+    43→  ScansOverTimeChart, TopCountriesChart, TopReferrersList, RecentScansFeed,
+    44→} from '@/components/analytics-blocks'
+    45→
+    46→export function QrDetailView() {
+    47→  const navigate = useRouterStore((s) => s.navigate)
+    48→  const params = useRouterStore((s) => s.params)
+    49→  const id = params.id
+    50→  const user = useAuthStore((s) => s.user)
+    51→  const openStudioEdit = useUIStore((s) => s.openStudioEdit)
+    52→  const qc = useQueryClient()
+    53→  const plan = (user?.plan ?? 'free') as Plan
+    54→  const limits = PLAN_LIMITS[plan]
+    55→
+    56→  const { data: code, isLoading } = useQuery({
+    57→    queryKey: ['qr-codes', id],
+    58→    queryFn: () => api.get<QrCodeRecord>(`/api/qr-codes/${id}`),
+    59→    enabled: !!id,
+    60→  })
+    61→  const { data: foldersData } = useQuery({
+    62→    queryKey: ['folders'],
+    63→    queryFn: () => api.get<{ data: FolderRecord[] }>('/api/folders'),
+    64→  })
+    65→
+    66→  // Per-QR analytics — deep breakdown for dynamic codes (plan-gated).
+    67→  const [range, setRange] = useState<RangeKey>(
+    68→    limits.analyticsDays && limits.analyticsDays >= 30 ? '30' : '7'
+    69→  )
+    70→  const [granularity, setGranularity] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+    71→  const { data: analyticsData, isLoading: analyticsLoading } = useQuery({
+    72→    queryKey: ['qr-codes', id, 'analytics', range],
+    73→    queryFn: () => api.get<AnalyticsSummary>(`/api/qr-codes/${id}/analytics?range=${range}`),
+    74→    enabled: !!id && !!code?.isDynamic && plan !== 'free',
+    75→    refetchInterval: 15000, // real-ish-time: refresh every 15s
+    76→  })
+    77→
+    78→  const [editingDest, setEditingDest] = useState(false)
+    79→  const [destValue, setDestValue] = useState('')
+    80→  const [editingPw, setEditingPw] = useState(false)
+    81→  const [pwValue, setPwValue] = useState('')
+    82→  const [editingExpiry, setEditingExpiry] = useState(false)
+    83→  const [expiryValue, setExpiryValue] = useState('')
+    84→  const [editingMax, setEditingMax] = useState(false)
+    85→  const [maxValue, setMaxValue] = useState('')
+    86→  const [editingActivates, setEditingActivates] = useState(false)
+    87→  const [activatesValue, setActivatesValue] = useState('')
+    88→  const [editingTitle, setEditingTitle] = useState(false)
+    89→  const [titleValue, setTitleValue] = useState('')
+    90→  const [tagInput, setTagInput] = useState('')
+    91→  const [folderDialogOpen, setFolderDialogOpen] = useState(false)
+    92→  const [shareDialogOpen, setShareDialogOpen] = useState(false)
+    93→
+    94→  // Redirect rules (Pro+ feature)
+    95→  const [rules, setRules] = useState<RedirectRule[]>(code?.redirectRules ?? [])
+    96→  const [newRuleType, setNewRuleType] = useState<'country' | 'device'>('device')
+    97→  const [newRuleValue, setNewRuleValue] = useState('')
+    98→  const [newRuleDest, setNewRuleDest] = useState('')
+    99→
+   100→  const patchMut = useMutation({
+   101→    mutationFn: (patch: Record<string, unknown>) => api.patch<QrCodeRecord>(`/api/qr-codes/${id}`, patch),
+   102→    onSuccess: () => {
+   103→      qc.invalidateQueries({ queryKey: ['qr-codes'] })
+   104→      qc.invalidateQueries({ queryKey: ['qr-codes', id] })
+   105→    },
+   106→    onError: () => toast.error('Update failed'),
+   107→  })
+   108→  const seedMut = useMutation({
+   109→    mutationFn: () => api.post('/api/seed', { qrCodeId: id }),
+   110→    onSuccess: () => {
+   111→      toast.success('Demo scans seeded')
+   112→      qc.invalidateQueries({ queryKey: ['qr-codes', id, 'analytics'] })
+   113→      qc.invalidateQueries({ queryKey: ['qr-codes'] })
+   114→      qc.invalidateQueries({ queryKey: ['qr-codes', id] })
+   115→    },
+   116→    onError: (e) => {
+   117→      const msg = e instanceof ApiError ? e.message : 'Seeding failed'
+   118→      toast.error(msg)
+   119→    },
+   120→  })
+   121→
+   122→  if (isLoading || !code) {
+   123→    return (
+   124→      <div className="flex h-64 items-center justify-center">
+   125→        <Loader2 className="h-6 w-6 animate-spin text-brand" />
+   126→      </div>
+   127→    )
+   128→  }
+   129→
+   130→  const typeDef = QR_TYPE_MAP[code.qrType]
+   131→  const TypeIcon = typeDef?.icon ?? QrCodeIcon
+   132→  const shortUrl = code.shortCode ? `createanqrcode.com/q/${code.shortCode}` : ''
+   133→  const folders = foldersData?.data ?? []
+   134→  const folder = folders.find((f) => f.id === code.folderId)
+   135→  const summary = analyticsData
+   136→  const top = summary?.topCountries?.[0]
+   137→  // Scheduled-activation flag: when activatesAt is set and is in the future,
+   138→  // the QR is not yet live and we show a "Scheduled" badge next to the status.
+   139→  const isScheduled = !!code.activatesAt && new Date(code.activatesAt) > new Date()
+   140→
+   141→  // Range options are plan-gated: free=7d, starter=30d, pro=365d, business=unlimited.
+   142→  const maxRange = limits.analyticsDays ?? 99999
+   143→  const isRangeAllowed = (r: RangeKey) => {
+   144→    const opt = RANGE_OPTIONS.find((o) => o.key === r)!
+   145→    return opt.days <= maxRange
+   146→  }
+   147→
+   148→  async function handleDownload(kind: 'png' | 'svg' | 'pdf') {
+   149→    try {
+   150→      const payload = code.staticPayload || code.destinationUrl || ''
+   151→      const filename = code.title.replace(/[^a-z0-9-_]+/gi, '_')
+   152→      if (kind === 'png') await downloadQrPng(payload, code.design, code.logoDataUrl, filename)
+   153→      else if (kind === 'svg') await downloadQrSvg(payload, code.design, code.logoDataUrl, filename)
+   154→      else await downloadQrPdf(payload, code.design, code.logoDataUrl, filename, code.title)
+   155→      toast.success(`Downloading ${kind.toUpperCase()}`)
+   156→    } catch {
+   157→      toast.error('Download failed')
+   158→    }
+   159→  }
+   160→
+   161→  function copyShort() {
+   162→    if (!shortUrl) return
+   163→    navigator.clipboard?.writeText(`https://${shortUrl}`)
+   164→    toast.success('Short URL copied')
+   165→  }
+   166→
+   167→  function saveDest() {
+   168→    if (!destValue.trim()) return
+   169→    patchMut.mutate({ destinationUrl: destValue.trim() }, {
+   170→      onSuccess: () => { toast.success('Destination updated'); setEditingDest(false) },
+   171→    })
+   172→  }
+   173→  function savePw() {
+   174→    patchMut.mutate({ password: pwValue || '' }, {
+   175→      onSuccess: () => { toast.success(pwValue ? 'Password set' : 'Password removed'); setEditingPw(false); setPwValue('') },
+   176→    })
+   177→  }
+   178→  function saveExpiry() {
+   179→    patchMut.mutate({ expiresAt: expiryValue ? new Date(expiryValue).toISOString() : null }, {
+   180→      onSuccess: () => { toast.success('Expiry updated'); setEditingExpiry(false) },
+   181→    })
+   182→  }
+   183→  function saveActivates() {
+   184→    patchMut.mutate({ activatesAt: activatesValue ? new Date(activatesValue).toISOString() : null }, {
+   185→      onSuccess: () => { toast.success('Activation date updated'); setEditingActivates(false) },
+   186→    })
+   187→  }
+   188→  function saveMax() {
+   189→    patchMut.mutate({ maxScans: maxValue ? Number(maxValue) : null }, {
+   190→      onSuccess: () => { toast.success('Max scans updated'); setEditingMax(false) },
+   191→    })
+   192→  }
+   193→  function saveRules(next: RedirectRule[]) {
+   194→    setRules(next)
+   195→    patchMut.mutate({ redirectRules: next.length ? next : null }, {
+   196→      onSuccess: () => toast.success(next.length ? 'Redirect rules saved' : 'Redirect rules cleared'),
+   197→    })
+   198→  }
+   199→  function addRule() {
+   200→    const val = newRuleValue.trim()
+   201→    const dest = newRuleDest.trim()
+   202→    if (!val || !dest) { toast.error('Fill in the rule value and destination'); return }
+   203→    if (!/^https?:\/\//i.test(dest)) { toast.error('Destination must start with http:// or https://'); return }
+   204→    const rule: RedirectRule = { id: `r${Date.now()}`, type: newRuleType, value: val, destination: dest }
+   205→    saveRules([...rules, rule])
+   206→    setNewRuleValue(''); setNewRuleDest('')
+   207→  }
+   208→  function removeRule(rid: string) {
+   209→    saveRules(rules.filter((r) => r.id !== rid))
+   210→  }
+   211→  function addTag() {
+   212→    const t = tagInput.trim()
+   213→    if (!t) return
+   214→    if (code.tags.includes(t)) { setTagInput(''); return }
+   215→    patchMut.mutate({ tags: [...code.tags, t] }, {
+   216→      onSuccess: () => { setTagInput('') },
+   217→    })
+   218→  }
+   219→  function removeTag(t: string) {
+   220→    patchMut.mutate({ tags: code.tags.filter((x) => x !== t) })
+   221→  }
+   222→  function setFolder(folderId: string | null) {
+   223→    patchMut.mutate({ folderId }, {
+   224→      onSuccess: () => { toast.success('Folder updated'); setFolderDialogOpen(false) },
+   225→    })
+   226→  }
+   227→  function toggleStatus() {
+   228→    const next = code.status === 'paused' ? 'active' : 'paused'
+   229→    patchMut.mutate({ status: next }, {
+   230→      onSuccess: () => toast.success(next === 'active' ? 'QR code resumed' : 'QR code paused'),
+   231→    })
+   232→  }
+   233→  function convertToDynamic() {
+   234→    patchMut.mutate({ isDynamic: true }, {
+   235→      onSuccess: () => toast.success('Converted to dynamic — analytics enabled!'),
+   236→      onError: () => toast.error('Convert failed'),
+   237→    })
+   238→  }
+   239→  function saveTitle() {
+   240→    const t = titleValue.trim()
+   241→    if (!t) { setEditingTitle(false); return }
+   242→    patchMut.mutate({ title: t }, {
+   243→      onSuccess: () => { toast.success('Title updated'); setEditingTitle(false) },
+   244→    })
+   245→  }
+   246→
+   247→  // Export this QR code's scans as CSV (Pro+). Fetches the full scan list
+   248→  // (up to 500 rows) rather than just the 50-row recent feed so the export
+   249→  // is genuinely useful for reporting.
+   250→  async function handleExportCSV() {
+   251→    try {
+   252→      const res = await api.get<{ data: ScanRecord[] }>(`/api/qr-codes/${id}/scans`)
+   253→      const rows = res.data
+   254→      const headers = ['scanned_at', 'country', 'country_code', 'city', 'device', 'os', 'browser', 'referrer', 'language']
+   255→      const lines = [headers.join(',')]
+   256→      for (const r of rows) {
+   257→        const cells = [
+   258→          r.scannedAt,
+   259→          r.countryName ?? '',
+   260→          r.countryCode ?? '',
+   261→          r.city ?? '',
+   262→          r.deviceType ?? '',
+   263→          r.os ?? '',
+   264→          r.browser ?? '',
+   265→          r.referrer ?? '',
+   266→          r.language ?? '',
+   267→        ].map((c) => `"${String(c).replace(/"/g, '""')}"`)
+   268→        lines.push(cells.join(','))
+   269→      }
+   270→      const csv = lines.join('\n')
+   271→      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+   272→      const url = URL.createObjectURL(blob)
+   273→      const a = document.createElement('a')
+   274→      a.href = url
+   275→      a.download = `${code.title.replace(/[^a-z0-9-_]+/gi, '_')}-scans-${range}.csv`
+   276→      a.click()
+   277→      URL.revokeObjectURL(url)
+   278→      toast.success(`Exported ${rows.length} scans`)
+   279→    } catch {
+   280→      toast.error('Export failed')
+   281→    }
+   282→  }
+   283→
+   284→  return (
+   285→    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+   286→      {/* Header */}
+   287→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   288→        <div className="flex min-w-0 items-center gap-3">
+   289→          <Button variant="ghost" size="icon" onClick={() => navigate('qr-codes')}>
+   290→            <ArrowLeft className="h-4 w-4" />
+   291→          </Button>
+   292→          <div className="min-w-0">
+   293→            <div className="flex items-center gap-2">
+   294→              {editingTitle ? (
+   295→                <div className="flex items-center gap-1.5">
+   296→                  <Input
+   297→                    value={titleValue}
+   298→                    onChange={(e) => setTitleValue(e.target.value)}
+   299→                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveTitle() } if (e.key === 'Escape') setEditingTitle(false) }}
+   300→                    onBlur={saveTitle}
+   301→                    autoFocus
+   302→                    className="h-9 w-64 text-lg font-bold"
+   303→                  />
+   304→                  <Check className="h-4 w-4 text-brand" />
+   305→                </div>
+   306→              ) : (
+   307→                <>
+   308→                  <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{code.title}</h1>
+   309→                  <button
+   310→                    onClick={() => { setTitleValue(code.title); setEditingTitle(true) }}
+   311→                    className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+   312→                    aria-label="Rename"
+   313→                    title="Rename"
+   314→                  >
+   315→                    <Pencil className="h-3.5 w-3.5" />
+   316→                  </button>
+   317→                </>
+   318→              )}
+   319→              <button
+   320→                onClick={() => patchMut.mutate({ favorite: !code.favorite })}
+   321→                className="rounded-md p-1 hover:bg-accent"
+   322→                aria-label="Toggle favorite"
+   323→              >
+   324→                <Star className={cn('h-4 w-4', code.favorite ? 'fill-foreground text-foreground' : 'text-muted-foreground')} />
+   325→              </button>
+   326→            </div>
+   327→            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+   328→              <Badge variant="secondary" className="gap-1 text-[10px]">
+   329→                <TypeIcon className="h-2.5 w-2.5" /> {typeDef?.label ?? code.qrType}
+   330→              </Badge>
+   331→              <StatusBadge status={code.status} />
+   332→              {code.isDynamic && (
+   333→                <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">Dynamic</Badge>
+   334→              )}
+   335→              {isScheduled && (
+   336→                <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">
+   337→                  <Clock className="mr-1 h-2.5 w-2.5" /> Scheduled
+   338→                </Badge>
+   339→              )}
+   340→            </div>
+   341→          </div>
+   342→        </div>
+   343→        <div className="flex items-center gap-2">
+   344→          <Button variant="outline" onClick={() => setShareDialogOpen(true)}>
+   345→            <Share2 className="mr-2 h-4 w-4" /> Share
+   346→          </Button>
+   347→          <Button onClick={() => openStudioEdit(code.id)} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   348→            <Pencil className="mr-2 h-4 w-4" /> Edit QR Code
+   349→          </Button>
+   350→        </div>
+   351→      </div>
+   352→
+   353→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+   354→        {/* Left: preview + downloads */}
+   355→        <Card className="border-border lg:col-span-1">
+   356→          <CardHeader><CardTitle className="text-base">QR Code</CardTitle></CardHeader>
+   357→          <CardContent className="flex flex-col items-center gap-4">
+   358→            <div className="rounded-xl bg-card p-4 shadow-sm ring-1 ring-border">
+   359→              <QrPreview
+   360→                payload={code.staticPayload || code.destinationUrl || ''}
+   361→                design={code.design}
+   362→                logoDataUrl={code.logoDataUrl}
+   363→                size={280}
+   364→              />
+   365→            </div>
+   366→            <div className="flex w-full flex-col gap-2 sm:flex-row">
+   367→              <Button onClick={() => handleDownload('png')} className="flex-1 bg-brand text-brand-foreground hover:bg-brand/90">
+   368→                <Download className="mr-2 h-4 w-4" /> PNG
+   369→              </Button>
+   370→              <Button onClick={() => handleDownload('svg')} variant="outline" className="flex-1">
+   371→                <Download className="mr-2 h-4 w-4" /> SVG
+   372→              </Button>
+   373→              <Button onClick={() => handleDownload('pdf')} variant="outline" className="flex-1">
+   374→                <Download className="mr-2 h-4 w-4" /> PDF
+   375→              </Button>
+   376→            </div>
+   377→          </CardContent>
+   378→        </Card>
+   379→
+   380→        {/* Center: scan simulation preview */}
+   381→        <Card className="border-border lg:col-span-1">
+   382→          <CardHeader>
+   383→            <CardTitle className="text-base">Scan Preview</CardTitle>
+   384→          </CardHeader>
+   385→          <CardContent>
+   386→            <ScanPreview code={code} />
+   387→          </CardContent>
+   388→        </Card>
+   389→
+   390→        {/* Right: details */}
+   391→        <div className="space-y-6 lg:col-span-1">
+   392→          <Card className="border-border">
+   393→            <CardHeader><CardTitle className="text-base">Details</CardTitle></CardHeader>
+   394→            <CardContent className="space-y-3 text-sm">
+   395→              <DetailRow icon={Calendar} label="Created" value={formatDateTime(code.createdAt)} />
+   396→              <DetailRow icon={Clock} label="Last edited" value={formatDateTime(code.updatedAt)} />
+   397→              <DetailRow icon={QrCodeIcon} label="Type" value={typeDef?.label ?? code.qrType} />
+   398→              <DetailRow icon={ShieldCheck} label="Error correction" value={code.design.errorCorrection} />
+   399→
+   400→              {/* Tags */}
+   401→              <div className="flex items-start gap-3 pt-1">
+   402→                <Tag className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+   403→                <div className="min-w-0 flex-1">
+   404→                  <p className="text-xs font-medium text-muted-foreground">Tags</p>
+   405→                  <div className="mt-1 flex flex-wrap items-center gap-1.5">
+   406→                    {code.tags.map((t) => (
+   407→                      <span key={t} className="inline-flex items-center gap-1 rounded bg-muted px-2 py-0.5 text-xs">
+   408→                        #{t}
+   409→                        <button onClick={() => removeTag(t)} className="text-muted-foreground hover:text-destructive">
+   410→                          <X className="h-3 w-3" />
+   411→                        </button>
+   412→                      </span>
+   413→                    ))}
+   414→                    {code.tags.length === 0 && <span className="text-xs text-muted-foreground">No tags yet</span>}
+   415→                    <Input
+   416→                      value={tagInput}
+   417→                      onChange={(e) => setTagInput(e.target.value)}
+   418→                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
+   419→                      placeholder="+ add tag"
+   420→                      className="h-7 w-28 text-xs"
+   421→                    />
+   422→                  </div>
+   423→                </div>
+   424→              </div>
+   425→
+   426→              {/* Folder */}
+   427→              <div className="flex items-center gap-3 pt-1">
+   428→                <FolderIcon className="h-4 w-4 shrink-0 text-muted-foreground" />
+   429→                <div className="min-w-0 flex-1">
+   430→                  <p className="text-xs font-medium text-muted-foreground">Folder</p>
+   431→                  {folder ? (
+   432→                    <div className="mt-1 flex items-center gap-2">
+   433→                      <span className="h-2.5 w-2.5 rounded-full" style={{ background: folder.color }} />
+   434→                      <span className="text-sm">{folder.name}</span>
+   435→                    </div>
+   436→                  ) : (
+   437→                    <p className="mt-0.5 text-sm text-muted-foreground">Unfiled</p>
+   438→                  )}
+   439→                </div>
+   440→                <Button variant="ghost" size="sm" onClick={() => setFolderDialogOpen(true)}>
+   441→                  Change
+   442→                </Button>
+   443→              </div>
+   444→            </CardContent>
+   445→          </Card>
+   446→
+   447→          {/* Dynamic details */}
+   448→          {code.isDynamic && (
+   449→            <Card className="border-brand/30">
+   450→              <CardHeader>
+   451→                <CardTitle className="flex items-center gap-2 text-base">
+   452→                  <Sparkles className="h-4 w-4 text-brand" />
+   453→                  Dynamic Code Details
+   454→                </CardTitle>
+   455→              </CardHeader>
+   456→              <CardContent className="space-y-4 text-sm">
+   457→                {/* Short URL */}
+   458→                <div className="space-y-1.5">
+   459→                  <p className="text-xs font-medium text-muted-foreground">Short URL</p>
+   460→                  <div className="flex flex-wrap items-center gap-2">
+   461→                    <code className="flex-1 truncate rounded-md border border-border bg-muted px-2 py-1.5 text-xs">
+   462→                      {shortUrl}
+   463→                    </code>
+   464→                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={copyShort}>
+   465→                      <Copy className="h-3.5 w-3.5" />
+   466→                    </Button>
+   467→                    <Button asChild variant="outline" size="icon" className="h-8 w-8">
+   468→                      <a href={`https://${shortUrl}`} target="_blank" rel="noreferrer">
+   469→                        <ExternalLink className="h-3.5 w-3.5" />
+   470→                      </a>
+   471→                    </Button>
+   472→                  </div>
+   473→                </div>
+   474→
+   475→                <Separator />
+   476→
+   477→                {/* Destination */}
+   478→                <div className="space-y-1.5">
+   479→                  <div className="flex items-center justify-between">
+   480→                    <p className="text-xs font-medium text-muted-foreground">Destination URL</p>
+   481→                    <Button variant="ghost" size="sm" onClick={() => { setDestValue(code.destinationUrl ?? ''); setEditingDest((v) => !v) }}>
+   482→                      <Pencil className="mr-1 h-3 w-3" /> {editingDest ? 'Cancel' : 'Edit'}
+   483→                    </Button>
+   484→                  </div>
+   485→                  {editingDest ? (
+   486→                    <div className="flex gap-2">
+   487→                      <Input value={destValue} onChange={(e) => setDestValue(e.target.value)} placeholder="https://" className="text-xs" />
+   488→                      <Button size="sm" onClick={saveDest} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   489→                        <Check className="h-3.5 w-3.5" />
+   490→                      </Button>
+   491→                    </div>
+   492→                  ) : (
+   493→                    <p className="truncate text-xs">{code.destinationUrl || '—'}</p>
+   494→                  )}
+   495→                </div>
+   496→
+   497→                {/* Status */}
+   498→                <div className="space-y-1.5">
+   499→                  <p className="text-xs font-medium text-muted-foreground">Status</p>
+   500→                  <div className="flex items-center justify-between">
+   501→                    <StatusBadge status={code.status} />
+   502→                    <Button variant="outline" size="sm" onClick={toggleStatus} disabled={patchMut.isPending}>
+   503→                      {code.status === 'paused' ? (
+   504→                        <><Play className="mr-1.5 h-3.5 w-3.5" /> Resume</>
+   505→                      ) : (
+   506→                        <><Pause className="mr-1.5 h-3.5 w-3.5" /> Pause</>
+   507→                      )}
+   508→                    </Button>
+   509→                  </div>
+   510→                </div>
+   511→
+   512→                {/* Password */}
+   513→                <div className="space-y-1.5">
+   514→                  <div className="flex items-center justify-between">
+   515→                    <p className="text-xs font-medium text-muted-foreground">Password protection</p>
+   516→                    <Button variant="ghost" size="sm" onClick={() => { setPwValue(''); setEditingPw((v) => !v) }}>
+   517→                      <Lock className="mr-1 h-3 w-3" /> {code.passwordHash ? 'Change' : 'Set'}
+   518→                    </Button>
+   519→                  </div>
+   520→                  {editingPw ? (
+   521→                    <div className="flex gap-2">
+   522→                      <Input type="password" value={pwValue} onChange={(e) => setPwValue(e.target.value)} placeholder="New password" className="text-xs" />
+   523→                      <Button size="sm" onClick={savePw} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   524→                        <Check className="h-3.5 w-3.5" />
+   525→                      </Button>
+   526→                    </div>
+   527→                  ) : (
+   528→                    <p className="text-xs text-muted-foreground">{code.passwordHash ? 'Protected' : 'Not protected'}</p>
+   529→                  )}
+   530→                </div>
+   531→
+   532→                {/* Expiry */}
+   533→                <div className="space-y-1.5">
+   534→                  <div className="flex items-center justify-between">
+   535→                    <p className="text-xs font-medium text-muted-foreground">Expiry date</p>
+   536→                    <Button variant="ghost" size="sm" onClick={() => { setExpiryValue(code.expiresAt ? code.expiresAt.slice(0, 16) : ''); setEditingExpiry((v) => !v) }}>
+   537→                      <Calendar className="mr-1 h-3 w-3" /> {code.expiresAt ? 'Change' : 'Set'}
+   538→                    </Button>
+   539→                  </div>
+   540→                  {editingExpiry ? (
+   541→                    <div className="flex gap-2">
+   542→                      <Input type="datetime-local" value={expiryValue} onChange={(e) => setExpiryValue(e.target.value)} className="text-xs" />
+   543→                      <Button size="sm" onClick={saveExpiry} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   544→                        <Check className="h-3.5 w-3.5" />
+   545→                      </Button>
+   546→                    </div>
+   547→                  ) : (
+   548→                    <p className="text-xs text-muted-foreground">{code.expiresAt ? formatDateTime(code.expiresAt) : 'No expiry'}</p>
+   549→                  )}
+   550→                </div>
+   551→
+   552→                {/* Max scans */}
+   553→                <div className="space-y-1.5">
+   554→                  <div className="flex items-center justify-between">
+   555→                    <p className="text-xs font-medium text-muted-foreground">Max scans</p>
+   556→                    <Button variant="ghost" size="sm" onClick={() => { setMaxValue(code.maxScans?.toString() ?? ''); setEditingMax((v) => !v) }}>
+   557→                      <Hash className="mr-1 h-3 w-3" /> {code.maxScans ? 'Change' : 'Set'}
+   558→                    </Button>
+   559→                  </div>
+   560→                  {editingMax ? (
+   561→                    <div className="flex gap-2">
+   562→                      <Input type="number" value={maxValue} onChange={(e) => setMaxValue(e.target.value)} placeholder="e.g. 1000" className="text-xs" />
+   563→                      <Button size="sm" onClick={saveMax} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   564→                        <Check className="h-3.5 w-3.5" />
+   565→                      </Button>
+   566→                    </div>
+   567→                  ) : (
+   568→                    <p className="text-xs text-muted-foreground">
+   569→                      {code.maxScans ? `${formatNumber(code.maxScans)} (used: ${formatNumber(code.scanCount)})` : 'Unlimited'}
+   570→                    </p>
+   571→                  )}
+   572→                </div>
+   573→
+   574→                {/* Activation date */}
+   575→                <div className="space-y-1.5">
+   576→                  <div className="flex items-center justify-between">
+   577→                    <p className="text-xs font-medium text-muted-foreground">Activation date</p>
+   578→                    <Button variant="ghost" size="sm" onClick={() => { setActivatesValue(code.activatesAt ? code.activatesAt.slice(0, 16) : ''); setEditingActivates((v) => !v) }}>
+   579→                      <Clock className="mr-1 h-3 w-3" /> {code.activatesAt ? 'Change' : 'Set'}
+   580→                    </Button>
+   581→                  </div>
+   582→                  {editingActivates ? (
+   583→                    <div className="flex gap-2">
+   584→                      <Input type="datetime-local" value={activatesValue} onChange={(e) => setActivatesValue(e.target.value)} className="text-xs" />
+   585→                      <Button size="sm" onClick={saveActivates} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   586→                        <Check className="h-3.5 w-3.5" />
+   587→                      </Button>
+   588→                    </div>
+   589→                  ) : (
+   590→                    <p className="text-xs text-muted-foreground">
+   591→                      {code.activatesAt
+   592→                        ? (isScheduled
+   593→                          ? `Activates ${formatDateTime(code.activatesAt)} (not yet live)`
+   594→                          : `Activated ${formatDateTime(code.activatesAt)}`)
+   595→                        : 'Active immediately'}
+   596→                    </p>
+   597→                  )}
+   598→                </div>
+   599→
+   600→                <Separator />
+   601→                <Button
+   602→                  variant="outline"
+   603→                  size="sm"
+   604→                  onClick={() => seedMut.mutate()}
+   605→                  disabled={seedMut.isPending}
+   606→                  className="w-full"
+   607→                >
+   608→                  {seedMut.isPending ? (
+   609→                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+   610→                  ) : (
+   611→                    <Sparkles className="mr-2 h-3.5 w-3.5" />
+   612→                  )}
+   613→                  Seed demo scans
+   614→                </Button>
+   615→              </CardContent>
+   616→            </Card>
+   617→          )}
+   618→
+   619→          {/* Redirect Rules (Pro+ feature) — only for dynamic codes */}
+   620→          {code.isDynamic && (
+   621→            <Card className="border-border">
+   622→              <CardHeader>
+   623→                <CardTitle className="flex items-center gap-2 text-base">
+   624→                  <Globe className="h-4 w-4 text-brand" />
+   625→                  Redirect Rules
+   626→                  {plan === 'free' && <Badge variant="secondary" className="text-[10px]">Pro+</Badge>}
+   627→                </CardTitle>
+   628→              </CardHeader>
+   629→              <CardContent className="space-y-4 text-sm">
+   630→                <p className="text-xs text-muted-foreground">
+   631→                  Send scanners to different destinations based on their device or country. Rules are checked in order; the first match wins.
+   632→                </p>
+   633→
+   634→                {/* Existing rules */}
+   635→                {rules.length > 0 && (
+   636→                  <div className="space-y-2">
+   637→                    {rules.map((r) => (
+   638→                      <div key={r.id} className="flex items-center gap-2 rounded-lg border border-border p-2.5">
+   639→                        <Badge variant="outline" className="shrink-0 capitalize border-brand/40 text-brand text-[10px]">{r.type}</Badge>
+   640→                        <div className="min-w-0 flex-1">
+   641→                          <p className="truncate text-xs font-medium">{r.value}</p>
+   642→                          <p className="truncate text-[11px] text-muted-foreground">→ {r.destination}</p>
+   643→                        </div>
+   644→                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => removeRule(r.id)}>
+   645→                          <X className="h-3.5 w-3.5" />
+   646→                        </Button>
+   647→                      </div>
+   648→                    ))}
+   649→                  </div>
+   650→                )}
+   651→
+   652→                {/* Pro+ gate */}
+   653→                {plan === 'free' ? (
+   654→                  <div className="rounded-lg border border-dashed border-border p-4 text-center">
+   655→                    <Lock className="mx-auto h-5 w-5 text-muted-foreground" />
+   656→                    <p className="mt-2 text-xs text-muted-foreground">Redirect rules are a Pro+ feature.</p>
+   657→                    <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('pricing')}>Upgrade to Pro</Button>
+   658→                  </div>
+   659→                ) : (
+   660→                  <div className="space-y-3 rounded-lg border border-border p-3">
+   661→                    <div className="grid grid-cols-2 gap-2">
+   662→                      <Select value={newRuleType} onValueChange={(v) => setNewRuleType(v as 'country' | 'device')}>
+   663→                        <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+   664→                        <SelectContent>
+   665→                          <SelectItem value="device">Device</SelectItem>
+   666→                          <SelectItem value="country">Country</SelectItem>
+   667→                        </SelectContent>
+   668→                      </Select>
+   669→                      <Input
+   670→                        className="h-9 text-xs"
+   671→                        value={newRuleValue}
+   672→                        onChange={(e) => setNewRuleValue(e.target.value)}
+   673→                        placeholder={newRuleType === 'device' ? 'Mobile / Tablet / Desktop' : 'IN / US / GB'}
+   674→                      />
+   675→                    </div>
+   676→                    <Input
+   677→                      className="h-9 text-xs"
+   678→                      value={newRuleDest}
+   679→                      onChange={(e) => setNewRuleDest(e.target.value)}
+   680→                      placeholder="https://mobile-landing.example.com"
+   681→                    />
+   682→                    <Button size="sm" variant="outline" className="w-full" onClick={addRule} disabled={patchMut.isPending}>
+   683→                      {patchMut.isPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+   684→                      Add rule
+   685→                    </Button>
+   686→                  </div>
+   687→                )}
+   688→              </CardContent>
+   689→            </Card>
+   690→          )}
+   691→        </div>
+   692→      </div>
+   693→
+   694→      {/* Analytics */}
+   695→      <div className="space-y-4">
+   696→        <div className="flex flex-wrap items-center justify-between gap-2">
+   697→          <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+   698→            <TrendingUp className="h-5 w-5 text-brand" />
+   699→            Analytics
+   700→          </h2>
+   701→          <div className="flex items-center gap-2">
+   702→            {plan !== 'free' && code.isDynamic && (plan === 'pro' || plan === 'business') && (
+   703→              <Button variant="outline" size="sm" onClick={handleExportCSV}>
+   704→                <DownloadIcon className="mr-1.5 h-3.5 w-3.5" /> Export CSV
+   705→              </Button>
+   706→            )}
+   707→            {plan !== 'free' && code.isDynamic && (
+   708→              <Button variant="ghost" size="sm" onClick={() => navigate('analytics')} className="text-brand">
+   709→                Full analytics <ExternalLink className="ml-1 h-3 w-3" />
+   710→              </Button>
+   711→            )}
+   712→          </div>
+   713→        </div>
+   714→
+   715→        {plan === 'free' ? (
+   716→          <Card className="relative overflow-hidden border-brand/30">
+   717→            <CardContent className="p-0">
+   718→              <div className="relative">
+   719→                {/* Blurred preview */}
+   720→                <div className="pointer-events-none select-none p-6 blur-sm" aria-hidden>
+   721→                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   722→                    {[0, 1, 2, 3].map((i) => (
+   723→                      <div key={i} className="rounded-xl border border-border bg-card p-4">
+   724→                        <div className="h-3 w-20 rounded bg-muted" />
+   725→                        <div className="mt-2 h-7 w-16 rounded bg-muted" />
+   726→                      </div>
+   727→                    ))}
+   728→                  </div>
+   729→                  <div className="mt-4 h-56 rounded-xl border border-border bg-card p-4">
+   730→                    <div className="h-full w-full rounded bg-gradient-to-br from-brand-muted/60 to-muted" />
+   731→                  </div>
+   732→                </div>
+   733→                {/* Lock overlay */}
+   734→                <div className="absolute inset-0 grid place-items-center bg-background/70 backdrop-blur-sm">
+   735→                  <div className="max-w-md p-6 text-center">
+   736→                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-muted text-brand">
+   737→                      <Lock className="h-7 w-7" />
+   738→                    </div>
+   739→                    <h3 className="mt-4 text-xl font-bold">Unlock scan analytics</h3>
+   740→                    <p className="mt-1.5 text-sm text-muted-foreground">
+   741→                      Upgrade to a paid plan to see total scans, unique visitors, top countries,
+   742→                      devices, referrers and real-time activity for this QR code.
+   743→                    </p>
+   744→                    <Button onClick={() => navigate('billing')} className="mt-4 bg-brand text-brand-foreground hover:bg-brand/90">
+   745→                      <Sparkles className="mr-2 h-4 w-4" /> Upgrade to unlock
+   746→                    </Button>
+   747→                  </div>
+   748→                </div>
+   749→              </div>
+   750→            </CardContent>
+   751→          </Card>
+   752→        ) : !code.isDynamic ? (
+   753→          <Card className="border-brand/30 bg-gradient-to-b from-brand-muted/20 to-transparent">
+   754→            <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+   755→              <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-muted text-brand">
+   756→                <Zap className="h-7 w-7" />
+   757→              </div>
+   758→              <div>
+   759→                <h3 className="text-lg font-bold">Enable scan analytics</h3>
+   760→                <p className="mx-auto mt-1.5 max-w-sm text-sm text-muted-foreground">
+   761→                  This is a static QR code. Convert it to dynamic to track scans, see
+   762→                  countries &amp; devices, add password protection, and edit the destination
+   763→                  anytime — without reprinting.
+   764→                </p>
+   765→              </div>
+   766→              <Button
+   767→                onClick={convertToDynamic}
+   768→                disabled={patchMut.isPending}
+   769→                className="bg-brand text-brand-foreground hover:bg-brand/90"
+   770→              >
+   771→                {patchMut.isPending ? (
+   772→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   773→                ) : (
+   774→                  <Zap className="mr-2 h-4 w-4" />
+   775→                )}
+   776→                Convert to Dynamic
+   777→              </Button>
+   778→              <p className="text-[11px] text-muted-foreground">
+   779→                A short URL will be generated. The printed QR will redirect through it.
+   780→              </p>
+   781→            </CardContent>
+   782→          </Card>
+   783→        ) : (
+   784→          <>
+   785→            {/* Period selector */}
+   786→            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+   787→              {RANGE_OPTIONS.map((opt) => {
+   788→                const allowed = isRangeAllowed(opt.key)
+   789→                const active = range === opt.key
+   790→                return (
+   791→                  <button
+   792→                    key={opt.key}
+   793→                    onClick={() => allowed && setRange(opt.key)}
+   794→                    disabled={!allowed}
+   795→                    className={cn(
+   796→                      'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all sm:text-sm',
+   797→                      active ? 'bg-brand text-brand-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent',
+   798→                      !allowed && 'cursor-not-allowed opacity-40'
+   799→                    )}
+   800→                    title={!allowed ? 'Available on a higher plan' : undefined}
+   801→                  >
+   802→                    {opt.label}
+   803→                    {!allowed && <Lock className="h-3 w-3" />}
+   804→                  </button>
+   805→                )
+   806→              })}
+   807→            </div>
+   808→
+   809→            {analyticsLoading || !summary ? (
+   810→              <div className="space-y-4">
+   811→                {/* Stat card skeletons */}
+   812→                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+   813→                  {Array.from({ length: 4 }).map((_, i) => (
+   814→                    <div key={i} className="h-20 rounded-xl border border-border p-4 sm:p-5">
+   815→                      <div className="flex items-start justify-between gap-2">
+   816→                        <div className="space-y-1.5">
+   817→                          <div className="skeleton-shimmer h-3 w-20 rounded" />
+   818→                          <div className="skeleton-shimmer h-6 w-16 rounded" />
+   819→                        </div>
+   820→                        <div className="skeleton-shimmer h-9 w-9 shrink-0 rounded-lg" />
+   821→                      </div>
+   822→                    </div>
+   823→                  ))}
+   824→                </div>
+   825→                <div className="skeleton-shimmer h-64 w-full rounded-xl" />
+   826→                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   827→                  <div className="skeleton-shimmer h-48 w-full rounded-xl" />
+   828→                  <div className="skeleton-shimmer h-48 w-full rounded-xl" />
+   829→                </div>
+   830→              </div>
+   831→            ) : summary.total === 0 ? (
+   832→              <Card className="border-dashed border-border">
+   833→                <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+   834→                  <div className="grid h-12 w-12 place-items-center rounded-full bg-muted">
+   835→                    <BarChart3 className="h-6 w-6 text-muted-foreground" />
+   836→                  </div>
+   837→                  <div>
+   838→                    <p className="font-semibold">No scans recorded yet</p>
+   839→                    <p className="mt-1 text-sm text-muted-foreground">
+   840→                      Share your QR code to start collecting analytics. Scan data appears here in real time.
+   841→                    </p>
+   842→                  </div>
+   843→                  <Button
+   844→                    variant="outline"
+   845→                    size="sm"
+   846→                    onClick={() => seedMut.mutate()}
+   847→                    disabled={seedMut.isPending}
+   848→                  >
+   849→                    {seedMut.isPending ? (
+   850→                      <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+   851→                    ) : (
+   852→                      <Sparkles className="mr-2 h-3.5 w-3.5" />
+   853→                    )}
+   854→                    Seed demo scans
+   855→                  </Button>
+   856→                </CardContent>
+   857→              </Card>
+   858→            ) : (
+   859→              <>
+   860→                {/* Stat cards */}
+   861→                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+   862→                  <StatCard
+   863→                    label="Total Scans"
+   864→                    value={formatNumber(summary.total)}
+   865→                    icon={BarChart3}
+   866→                    accent
+   867→                  />
+   868→                  <StatCard
+   869→                    label="Unique Visitors"
+   870→                    value={formatNumber(summary.unique)}
+   871→                    icon={Users}
+   872→                  />
+   873→                  <StatCard
+   874→                    label="Top Country"
+   875→                    value={top ? top.name : '—'}
+   876→                    hint={top ? `${formatNumber(top.count)} scans` : undefined}
+   877→                    icon={Globe}
+   878→                  />
+   879→                  <StatCard
+   880→                    label="Peak Time"
+   881→                    value={summary.peakHour >= 0 ? `${String(summary.peakHour).padStart(2, '0')}:00` : '—'}
+   882→                    hint={summary.peakHour >= 0 ? 'Busiest hour of day' : undefined}
+   883→                    icon={Clock}
+   884→                  />
+   885→                </div>
+   886→
+   887→                {/* Scans Over Time */}
+   888→                <Card className="border-border">
+   889→                  <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   890→                    <div>
+   891→                      <CardTitle className="text-base">Scans Over Time</CardTitle>
+   892→                      <p className="mt-1 text-xs text-muted-foreground">
+   893→                        Daily scan volume vs unique visitors.
+   894→                      </p>
+   895→                    </div>
+   896→                    <Tabs value={granularity} onValueChange={(v) => setGranularity(v as typeof granularity)}>
+   897→                      <TabsList>
+   898→                        <TabsTrigger value="daily">Daily</TabsTrigger>
+   899→                        <TabsTrigger value="weekly">Weekly</TabsTrigger>
+   900→                        <TabsTrigger value="monthly">Monthly</TabsTrigger>
+   901→                      </TabsList>
+   902→                    </Tabs>
+   903→                  </CardHeader>
+   904→                  <CardContent>
+   905→                    <ScansOverTimeChart data={summary.overTime} granularity={granularity} />
+   906→                    <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+   907→                      <span className="flex items-center gap-1.5">
+   908→                        <span className="h-2 w-3 rounded-sm" style={{ background: DEVICE_COLOR }} /> Total scans
+   909→                      </span>
+   910→                      <span className="flex items-center gap-1.5">
+   911→                        <span className="h-2 w-3 rounded-sm" style={{ background: UNIQUE_COLOR }} /> Unique visitors
+   912→                      </span>
+   913→                    </div>
+   914→                  </CardContent>
+   915→                </Card>
+   916→
+   917→                {/* Top Countries + Top Referrers */}
+   918→                <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   919→                  <Card className="border-border">
+   920→                    <CardHeader>
+   921→                      <CardTitle className="text-base">Top Countries</CardTitle>
+   922→                      <p className="mt-1 text-xs text-muted-foreground">Where your scans come from.</p>
+   923→                    </CardHeader>
+   924→                    <CardContent>
+   925→                      <TopCountriesChart data={summary.topCountries} total={summary.total} />
+   926→                    </CardContent>
+   927→                  </Card>
+   928→
+   929→                  <Card className="border-border">
+   930→                    <CardHeader>
+   931→                      <CardTitle className="text-base">Top Referrers</CardTitle>
+   932→                      <p className="mt-1 text-xs text-muted-foreground">Sources driving scans.</p>
+   933→                    </CardHeader>
+   934→                    <CardContent>
+   935→                      <TopReferrersList data={summary.referrers} />
+   936→                    </CardContent>
+   937→                  </Card>
+   938→                </div>
+   939→
+   940→                {/* Device / OS / Browser donuts */}
+   941→                <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   942→                  <DonutCard title="Device Breakdown" data={summary.devices} icon={Smartphone} />
+   943→                  <DonutCard title="Operating System" data={summary.oses} icon={Monitor} />
+   944→                  <DonutCard title="Browser" data={summary.browsers} icon={Globe} />
+   945→                </div>
+   946→
+   947→                {/* Scan heatmap (Business only) */}
+   948→                {plan === 'business' && (
+   949→                  <Card className="border-border">
+   950→                    <CardHeader>
+   951→                      <CardTitle className="text-base">Scan Heatmap</CardTitle>
+   952→                      <p className="mt-1 text-xs text-muted-foreground">
+   953→                        Activity by day of week and hour. Hover for count.
+   954→                      </p>
+   955→                    </CardHeader>
+   956→                    <CardContent>
+   957→                      <Heatmap data={summary.heatmap} />
+   958→                    </CardContent>
+   959→                  </Card>
+   960→                )}
+   961→
+   962→                {/* Recent scans feed */}
+   963→                <Card className="border-brand/30">
+   964→                  <CardHeader className="flex flex-row items-center justify-between">
+   965→                    <div>
+   966→                      <CardTitle className="text-base">Recent Scans</CardTitle>
+   967→                      <p className="mt-1 text-xs text-muted-foreground">Latest scan events for this QR code.</p>
+   968→                    </div>
+   969→                    <Badge className="bg-brand-muted text-brand">
+   970→                      <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+   971→                      Live
+   972→                    </Badge>
+   973→                  </CardHeader>
+   974→                  <CardContent>
+   975→                    <RecentScansFeed scans={summary.recent} emptyLabel="No scans in this period." />
+   976→                  </CardContent>
+   977→                </Card>
+   978→              </>
+   979→            )}
+   980→          </>
+   981→        )}
+   982→      </div>
+   983→
+   984→      {/* Folder dialog */}
+   985→      <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+   986→        <DialogContent>
+   987→          <DialogHeader>
+   988→            <DialogTitle>Move to folder</DialogTitle>
+   989→            <DialogDescription>Choose a folder for this QR code.</DialogDescription>
+   990→          </DialogHeader>
+   991→          <div className="max-h-64 space-y-1 overflow-y-auto scroll-thin">
+   992→            <button
+   993→              onClick={() => setFolder(null)}
+   994→              className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+   995→            >
+   996→              <span>No folder (unfile)</span>
+   997→              {!code.folderId && <Check className="h-4 w-4 text-brand" />}
+   998→            </button>
+   999→            {folders.map((f) => (
+  1000→              <button
+  1001→                key={f.id}
+  1002→                onClick={() => setFolder(f.id)}
+  1003→                className="flex w-full items-center gap-3 rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+  1004→              >
+  1005→                <span className="h-3 w-3 rounded-full" style={{ background: f.color }} />
+  1006→                <span className="flex-1 text-left">{f.name}</span>
+  1007→                {code.folderId === f.id && <Check className="h-4 w-4 text-brand" />}
+  1008→              </button>
+  1009→            ))}
+  1010→          </div>
+  1011→        </DialogContent>
+  1012→      </Dialog>
+  1013→
+  1014→      {/* Share dialog */}
+  1015→      <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} code={code} />
+  1016→    </div>
+  1017→  )
+  1018→}
+  1019→
+  1020→function StatusBadge({ status }: { status: string }) {
+  1021→  // Shape-based monochrome status badges (no color) per spec Section 1.8
+  1022→  const map: Record<string, { label: string; className: string }> = {
+  1023→    active: { label: 'Active', className: 'bg-foreground/5 text-foreground border-border' },
+  1024→    paused: { label: 'Paused', className: 'bg-muted text-muted-foreground border-border' },
+  1025→    expired: { label: 'Expired', className: 'bg-muted text-muted-foreground border-border' },
+  1026→    archived: { label: 'Archived', className: 'bg-muted text-muted-foreground border-border' },
+  1027→    trashed: { label: 'Trashed', className: 'bg-destructive/10 text-destructive border-destructive/20' },
+  1028→  }
+  1029→  const cfg = map[status] ?? map.active
+  1030→  return (
+  1031→    <Badge variant="outline" className={cn('text-[10px] font-medium', cfg.className)}>
+  1032→      {cfg.label}
+  1033→    </Badge>
+  1034→  )
+  1035→}
+  1036→
+  1037→function DetailRow({ icon: Icon, label, value }: { icon: typeof Calendar; label: string; value: string }) {
+  1038→  return (
+  1039→    <div className="flex items-center gap-3">
+  1040→      <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+  1041→      <div className="min-w-0 flex-1">
+  1042→        <p className="text-xs font-medium text-muted-foreground">{label}</p>
+  1043→        <p className="truncate text-sm">{value}</p>
+  1044→      </div>
+  1045→    </div>
+  1046→  )
+  1047→}
+  1048→
+  1049→export default QrDetailView
+  1050→

@@ -1,0 +1,657 @@
+     1→'use client'
+     2→
+     3→import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
+     4→import { toast } from 'sonner'
+     5→import {
+     6→  ChevronDown, Download, Save, Sparkles, AlertCircle, Lock,
+     7→  CalendarClock, Hash, Image as ImageIcon, X, SlidersHorizontal,
+     8→  FileEdit, ChevronRight, Home, LayoutGrid,
+     9→} from 'lucide-react'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Card, CardContent } from '@/components/ui/card'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Label } from '@/components/ui/label'
+    15→import { Textarea } from '@/components/ui/textarea'
+    16→import { Checkbox } from '@/components/ui/checkbox'
+    17→import { Switch } from '@/components/ui/switch'
+    18→import { Slider } from '@/components/ui/slider'
+    19→import { Separator } from '@/components/ui/separator'
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select'
+    23→import {
+    24→  Collapsible, CollapsibleContent, CollapsibleTrigger,
+    25→} from '@/components/ui/collapsible'
+    26→import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+    27→import {
+    28→  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+    29→} from '@/components/ui/accordion'
+    30→import { QrPreview } from '@/components/qr-preview'
+    31→import { useRouterStore, useUIStore, useAuthStore } from '@/lib/stores'
+    32→import { QR_TYPE_MAP, QR_TYPES, QR_CATEGORIES, getSeo, type QrTypeField } from '@/lib/qr-types'
+    33→import { DEFAULT_DESIGN, PLAN_LIMITS, type QrDesign } from '@/lib/types'
+    34→import { api, ApiError } from '@/lib/api'
+    35→import { downloadQrPng, downloadQrSvg, downloadQrPdf } from '@/lib/qr-generate'
+    36→import { cn } from '@/lib/utils'
+    37→
+    38→const DOT_STYLES: { id: QrDesign['dotStyle']; label: string }[] = [
+    39→  { id: 'square', label: 'Square' }, { id: 'rounded', label: 'Rounded' }, { id: 'dots', label: 'Dots' },
+    40→  { id: 'classy', label: 'Classy' }, { id: 'classy-rounded', label: 'Classy Rnd' }, { id: 'extra-rounded', label: 'Extra Rnd' },
+    41→]
+    42→const EYE_STYLES: { id: QrDesign['eyeStyle']; label: string }[] = [
+    43→  { id: 'square', label: 'Square' }, { id: 'extra-rounded', label: 'Rounded' }, { id: 'dot', label: 'Dot' },
+    44→]
+    45→const EC_LEVELS: { id: QrDesign['errorCorrection']; label: string; helper: string }[] = [
+    46→  { id: 'L', label: 'L', helper: '~7% recovery · most data' },
+    47→  { id: 'M', label: 'M', helper: '~15% recovery · recommended' },
+    48→  { id: 'Q', label: 'Q', helper: '~25% recovery · logos' },
+    49→  { id: 'H', label: 'H', helper: '~30% recovery · damaged' },
+    50→]
+    51→const OUTPUT_SIZES: QrDesign['outputSize'][] = [256, 512, 1024, 2048]
+    52→const COLOR_PRESETS = ['#000000', '#7C3AED', '#EC4899', '#DC2626', '#EA580C', '#16A34A', '#0891B2', '#1E40AF']
+    53→const BG_PRESETS = ['#FFFFFF', '#F8FAFC', '#FEF3C7', '#E0E7FF', '#FCE7F3', '#000000']
+    54→
+    55→// Desktop detection at lg breakpoint (matches the Create view)
+    56→const DESKTOP_QUERY = '(min-width: 1024px)'
+    57→function subscribeDesktop(cb: () => void) {
+    58→  if (typeof window === 'undefined') return () => {}
+    59→  const mq = window.matchMedia(DESKTOP_QUERY)
+    60→  mq.addEventListener('change', cb)
+    61→  return () => mq.removeEventListener('change', cb)
+    62→}
+    63→function getDesktop() { return typeof window !== 'undefined' && window.matchMedia(DESKTOP_QUERY).matches }
+    64→function getDesktopServer() { return false }
+    65→function useIsDesktop() {
+    66→  return useSyncExternalStore(subscribeDesktop, getDesktop, getDesktopServer)
+    67→}
+    68→
+    69→function initialFormValues(typeId: string): Record<string, string | boolean> {
+    70→  const def = QR_TYPE_MAP[typeId]
+    71→  if (!def) return {}
+    72→  const vals: Record<string, string | boolean> = {}
+    73→  for (const f of def.fields) vals[f.key] = f.defaultValue ?? (f.type === 'checkbox' ? false : '')
+    74→  return vals
+    75→}
+    76→
+    77→export function TypePageView() {
+    78→  const navigate = useRouterStore((s) => s.navigate)
+    79→  const params = useRouterStore((s) => s.params)
+    80→  const user = useAuthStore((s) => s.user)
+    81→
+    82→  const typeId = params.type && QR_TYPE_MAP[params.type] ? params.type : 'url'
+    83→  const def = QR_TYPE_MAP[typeId]
+    84→  const seo = useMemo(() => getSeo(typeId), [typeId])
+    85→
+    86→  // ── SEO: dynamically update document title + meta ──
+    87→  // Re-applies on auth state change too (`user`), because the auth re-render can
+    88→  // trigger Next.js to re-assert the static layout metadata and clobber our
+    89→  // per-type head tags. A delayed re-assert wins that race.
+    90→  useEffect(() => {
+    91→    if (typeof document === 'undefined') return
+    92→    const apply = () => {
+    93→      document.title = seo.title
+    94→      const setMeta = (name: string, content: string) => {
+    95→        let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null
+    96→        if (!el) { el = document.createElement('meta'); el.setAttribute('name', name); document.head.appendChild(el) }
+    97→        el.setAttribute('content', content)
+    98→      }
+    99→      setMeta('description', seo.description)
+   100→      setMeta('keywords', seo.keywords.join(', '))
+   101→    }
+   102→    apply()
+   103→    // Re-assert after the next paint + a microtask delay to out-last any
+   104→    // framework metadata re-application triggered by concurrent re-renders.
+   105→    const raf = requestAnimationFrame(apply)
+   106→    const t = setTimeout(apply, 60)
+   107→    return () => { cancelAnimationFrame(raf); clearTimeout(t) }
+   108→  }, [seo, typeId, user])
+   109→
+   110→  // Restore the default document title when leaving a type page.
+   111→  useEffect(() => {
+   112→    return () => {
+   113→      if (typeof document !== 'undefined') {
+   114→        document.title = 'CreateAnQRCode — Free QR Code Generator. Forever.'
+   115→      }
+   116→    }
+   117→  }, [])
+   118→
+   119→  const [formValues, setFormValues] = useState<Record<string, string | boolean>>(() => initialFormValues(typeId))
+   120→  const [title, setTitle] = useState(`${def.label} QR Code`)
+   121→  const [design, setDesign] = useState<QrDesign>({ ...DEFAULT_DESIGN })
+   122→  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+   123→  const [isDynamic, setIsDynamic] = useState(false)
+   124→  const [downloading, setDownloading] = useState(false)
+   125→  const [saving, setSaving] = useState(false)
+   126→  const [mobileTab, setMobileTab] = useState<'content' | 'design'>('content')
+   127→
+   128→  // Reset state when the type changes
+   129→  useEffect(() => {
+   130→    setFormValues(initialFormValues(typeId))
+   131→    setTitle(`${def.label} QR Code`)
+   132→    setMobileTab('content')
+   133→  }, [typeId, def.label])
+   134→
+   135→  const payload = useMemo(() => def.buildPayload(formValues), [def, formValues])
+   136→  const fileInputRef = useRef<HTMLInputElement>(null)
+   137→  const isDesktop = useIsDesktop()
+   138→
+   139→  const updateDesign = (patch: Partial<QrDesign>) => setDesign((d) => ({ ...d, ...patch }))
+   140→
+   141→  const validate = (): string | null => {
+   142→    for (const f of def.fields) {
+   143→      if (f.required && f.showIf && !f.showIf(formValues)) continue
+   144→      if (f.required && f.type !== 'checkbox') {
+   145→        const val = formValues[f.key]
+   146→        if (!val || (typeof val === 'string' && !val.trim())) return `"${f.label}" is required`
+   147→      }
+   148→    }
+   149→    if (!payload) return 'Please fill in the required fields'
+   150→    return null
+   151→  }
+   152→
+   153→  const handleDownload = async (kind: 'png' | 'svg' | 'pdf') => {
+   154→    const err = validate()
+   155→    if (err) { toast.error(err); setMobileTab('content'); return }
+   156→    if (!payload) return
+   157→    setDownloading(true)
+   158→    try {
+   159→      const fn = (title || 'qr-code').replace(/[^a-z0-9-_]+/gi, '-').toLowerCase()
+   160→      if (kind === 'png') await downloadQrPng(payload, design, logoDataUrl, fn)
+   161→      else if (kind === 'svg') await downloadQrSvg(payload, design, logoDataUrl, fn)
+   162→      else await downloadQrPdf(payload, design, logoDataUrl, fn, title || undefined)
+   163→      toast.success(`Downloaded ${kind.toUpperCase()}`)
+   164→    } catch { toast.error('Download failed') } finally { setDownloading(false) }
+   165→  }
+   166→
+   167→  const handleSave = async () => {
+   168→    const err = validate()
+   169→    if (err) { toast.error(err); return }
+   170→    if (!payload) return
+   171→    if (!user) { navigate('signup', { redirect: 'type-page' }); return }
+   172→    setSaving(true)
+   173→    try {
+   174→      await api.post('/api/qr-codes', {
+   175→        title: title.trim(),
+   176→        qrType: typeId,
+   177→        isDynamic,
+   178→        // For dynamic codes the payload becomes the destination URL so scans
+   179→        // can be tracked + the destination can be edited later.
+   180→        staticPayload: isDynamic ? null : payload,
+   181→        destinationUrl: isDynamic ? payload : null,
+   182→        password: null,
+   183→        expiresAt: null,
+   184→        maxScans: null,
+   185→        design, logoDataUrl, tags: [],
+   186→      })
+   187→      toast.success(isDynamic ? 'Dynamic QR code saved!' : 'QR code saved!')
+   188→      navigate('qr-codes')
+   189→    } catch (e) { toast.error(e instanceof ApiError ? e.message : 'Save failed') } finally { setSaving(false) }
+   190→  }
+   191→
+   192→  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+   193→    const file = e.target.files?.[0]
+   194→    if (!file) return
+   195→    if (file.size > 1024 * 1024) { toast.error('Logo must be under 1MB'); return }
+   196→    const reader = new FileReader()
+   197→    reader.onload = () => { setLogoDataUrl(reader.result as string); toast.success('Logo added') }
+   198→    reader.readAsDataURL(file)
+   199→  }
+   200→
+   201→  const relatedTypes = useMemo(() => {
+   202→    return QR_CATEGORIES.find((c) => c.id === def.category)
+   203→      ? Object.values(QR_TYPE_MAP).filter((t) => t.category === def.category && t.id !== typeId).slice(0, 6)
+   204→      : []
+   205→  }, [def.category, typeId])
+   206→
+   207→  const cat = QR_CATEGORIES.find((c) => c.id === def.category)
+   208→
+   209→  return (
+   210→    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+   211→      {/* Breadcrumbs */}
+   212→      <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+   213→        <button onClick={() => navigate('home')} className="inline-flex items-center gap-1 hover:text-foreground"><Home className="h-3 w-3" /> Home</button>
+   214→        <ChevronRight className="h-3 w-3" />
+   215→        <button onClick={() => navigate('types')} className="inline-flex items-center gap-1 hover:text-foreground"><LayoutGrid className="h-3 w-3" /> All QR Types</button>
+   216→        {cat && <>
+   217→          <ChevronRight className="h-3 w-3" />
+   218→          <span>{cat.label}</span>
+   219→        </>}
+   220→        <ChevronRight className="h-3 w-3" />
+   221→        <span className="text-foreground">{def.label}</span>
+   222→      </nav>
+   223→
+   224→      {/* SEO H1 + intro */}
+   225→      <header className="mb-6 max-w-3xl">
+   226→        <div className="mb-3 flex items-center gap-3">
+   227→          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-muted text-brand">
+   228→            <def.icon className="h-6 w-6" />
+   229→          </div>
+   230→          <Badge variant="outline" className="border-brand/30 text-brand">{cat?.label}</Badge>
+   231→          {def.popular && <Badge variant="secondary">Popular</Badge>}
+   232→        </div>
+   233→        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl">{def.label} QR Code Generator</h1>
+   234→        <p className="mt-3 text-sm text-muted-foreground sm:text-base">{seo.description}</p>
+   235→      </header>
+   236→
+   237→      {/* ── GENERATOR ── */}
+   238→      <div className="mb-12">
+   239→        {isDesktop ? (
+   240→          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+   241→            {/* LEFT — form + customizer (below form, collapsed by default) */}
+   242→            <div className="space-y-6">
+   243→              <FormCard def={def} title={title} setTitle={setTitle} formValues={formValues}
+   244→                onFieldChange={(k, val) => setFormValues((p) => ({ ...p, [k]: val }))}
+   245→                user={user} navigate={navigate}
+   246→                isDynamic={isDynamic} setIsDynamic={setIsDynamic} dynamicLimit={PLAN_LIMITS[user?.plan ?? 'free'].dynamicQr} />
+   247→              <Customizer design={design} updateDesign={updateDesign} logoDataUrl={logoDataUrl}
+   248→                onLogoUpload={handleLogoUpload} onLogoRemove={() => setLogoDataUrl(null)} fileInputRef={fileInputRef} />
+   249→            </div>
+   250→            {/* RIGHT — live preview (sticky, always visible) */}
+   251→            <div className="lg:sticky lg:top-20 lg:self-start lg:z-10">
+   252→              <PreviewCard payload={payload} design={design} logoDataUrl={logoDataUrl}
+   253→                onDownload={handleDownload} downloading={downloading} onSave={handleSave} saving={saving} user={user} navigate={navigate} isDynamic={isDynamic} />
+   254→            </div>
+   255→          </div>
+   256→        ) : (
+   257→          <div>
+   258→            <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md">
+   259→              <div className="flex items-center gap-3">
+   260→                <div className="qr-frame shrink-0 rounded-xl p-1.5 shadow-sm">
+   261→                  <QrPreview payload={payload || ' '} design={design} logoDataUrl={logoDataUrl} size={72} />
+   262→                </div>
+   263→                <div className="min-w-0 flex-1">
+   264→                  <p className="truncate text-sm font-semibold">{title}</p>
+   265→                  <p className="truncate text-xs text-muted-foreground">{def.label} · {design.dotStyle}</p>
+   266→                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+   267→                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => handleDownload('png')} disabled={downloading}><Download className="h-3 w-3" /> PNG</Button>
+   268→                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => handleDownload('svg')} disabled={downloading}><Download className="h-3 w-3" /> SVG</Button>
+   269→                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => handleDownload('pdf')} disabled={downloading}><Download className="h-3 w-3" /> PDF</Button>
+   270→                  </div>
+   271→                </div>
+   272→              </div>
+   273→            </div>
+   274→            <Tabs value={mobileTab} onValueChange={(v) => setMobileTab(v as 'content' | 'design')}>
+   275→              <TabsList className="grid w-full grid-cols-2">
+   276→                <TabsTrigger value="content" className="gap-1.5"><FileEdit className="h-3.5 w-3.5" /> Content</TabsTrigger>
+   277→                <TabsTrigger value="design" className="gap-1.5"><SlidersHorizontal className="h-3.5 w-3.5" /> Design</TabsTrigger>
+   278→              </TabsList>
+   279→              <TabsContent value="content" className="mt-4 pb-24">
+   280→                <FormCard def={def} title={title} setTitle={setTitle} formValues={formValues}
+   281→                  onFieldChange={(k, val) => setFormValues((p) => ({ ...p, [k]: val }))}
+   282→                  user={user} navigate={navigate}
+   283→                  isDynamic={isDynamic} setIsDynamic={setIsDynamic} dynamicLimit={PLAN_LIMITS[user?.plan ?? 'free'].dynamicQr} />
+   284→              </TabsContent>
+   285→              <TabsContent value="design" className="mt-4 pb-24">
+   286→                <Customizer design={design} updateDesign={updateDesign} logoDataUrl={logoDataUrl}
+   287→                  onLogoUpload={handleLogoUpload} onLogoRemove={() => setLogoDataUrl(null)} fileInputRef={fileInputRef} />
+   288→              </TabsContent>
+   289→            </Tabs>
+   290→            <div className="sticky bottom-0 z-20 -mx-4 mt-6 border-t border-border bg-background/95 px-4 py-3 backdrop-blur-md pb-safe">
+   291→              <div className="flex flex-wrap gap-2">
+   292→                <Button onClick={() => handleDownload('png')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> PNG</Button>
+   293→                <Button onClick={() => handleDownload('svg')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> SVG</Button>
+   294→                <Button onClick={() => handleDownload('pdf')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> PDF</Button>
+   295→                {user ? (
+   296→                  <Button onClick={handleSave} disabled={saving} className="flex-1 bg-brand text-brand-foreground hover:bg-brand/90"><Save className="h-4 w-4" /> {saving ? '...' : 'Save'}</Button>
+   297→                ) : (
+   298→                  <Button onClick={() => navigate('signup')} className="flex-1 bg-brand text-brand-foreground hover:bg-brand/90">Sign up</Button>
+   299→                )}
+   300→              </div>
+   301→            </div>
+   302→          </div>
+   303→        )}
+   304→      </div>
+   305→
+   306→      {/* ── SEO CONTENT: How to + FAQ + Related ── */}
+   307→      <div className="grid gap-8 lg:grid-cols-3">
+   308→        {/* How to */}
+   309→        <section className="lg:col-span-2">
+   310→          <Card className="rounded-2xl">
+   311→            <CardContent className="p-6">
+   312→              <h2 className="text-xl font-bold">How to create a {def.label} QR code</h2>
+   313→              <ol className="mt-4 space-y-3">
+   314→                {seo.howTo.map((step, i) => (
+   315→                  <li key={i} className="flex gap-3">
+   316→                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand text-xs font-bold text-brand-foreground">{i + 1}</span>
+   317→                    <span className="text-sm text-foreground/90">{step}</span>
+   318→                  </li>
+   319→                ))}
+   320→              </ol>
+   321→              <div className="mt-5 rounded-xl bg-muted/50 p-4 text-sm">
+   322→                <p className="font-medium text-foreground">Use cases</p>
+   323→                <p className="mt-1 text-muted-foreground">{def.useCase}</p>
+   324→              </div>
+   325→            </CardContent>
+   326→          </Card>
+   327→
+   328→          {/* FAQ */}
+   329→          <Card className="mt-6 rounded-2xl">
+   330→            <CardContent className="p-6">
+   331→              <h2 className="text-xl font-bold">{def.label} QR code FAQ</h2>
+   332→              <Accordion type="single" collapsible className="mt-4">
+   333→                {seo.faqs.map((f, i) => (
+   334→                  <AccordionItem key={i} value={`item-${i}`}>
+   335→                    <AccordionTrigger className="text-left text-sm">{f.q}</AccordionTrigger>
+   336→                    <AccordionContent className="text-sm text-muted-foreground">{f.a}</AccordionContent>
+   337→                  </AccordionItem>
+   338→                ))}
+   339→              </Accordion>
+   340→            </CardContent>
+   341→          </Card>
+   342→        </section>
+   343→
+   344→        {/* Related types */}
+   345→        <aside>
+   346→          <Card className="rounded-2xl">
+   347→            <CardContent className="p-6">
+   348→              <h2 className="text-base font-bold">Related QR types</h2>
+   349→              <p className="mt-1 text-xs text-muted-foreground">More in {cat?.label}</p>
+   350→              <div className="mt-4 space-y-1">
+   351→                {relatedTypes.map((t) => (
+   352→                  <button key={t.id} onClick={() => navigate('type-page', { type: t.id })}
+   353→                    className="tap-none flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-accent">
+   354→                    <t.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+   355→                    <span className="flex-1 truncate">{t.label}</span>
+   356→                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+   357→                  </button>
+   358→                ))}
+   359→              </div>
+   360→              <Button variant="outline" className="mt-4 w-full" onClick={() => navigate('types')}>
+   361→                <LayoutGrid className="h-4 w-4" /> Browse all {QR_TYPES.length} types
+   362→              </Button>
+   363→            </CardContent>
+   364→          </Card>
+   365→        </aside>
+   366→      </div>
+   367→    </div>
+   368→  )
+   369→}
+   370→
+   371→// ─────────────────────────────────────────────────────────────────────────────
+   372→function FormCard({ def, title, setTitle, formValues, onFieldChange, user, navigate, isDynamic, setIsDynamic, dynamicLimit }: {
+   373→  def: typeof QR_TYPE_MAP[string]
+   374→  title: string
+   375→  setTitle: (v: string) => void
+   376→  formValues: Record<string, string | boolean>
+   377→  onFieldChange: (k: string, v: string | boolean) => void
+   378→  user: ReturnType<typeof useAuthStore.getState>['user']
+   379→  navigate: (v: Parameters<ReturnType<typeof useRouterStore.getState>['navigate']>[0]) => void
+   380→  isDynamic: boolean
+   381→  setIsDynamic: (v: boolean) => void
+   382→  dynamicLimit: number | null
+   383→}) {
+   384→  return (
+   385→    <Card className="rounded-2xl">
+   386→      <CardContent className="space-y-5 p-6">
+   387→        <div className="space-y-2">
+   388→          <Label htmlFor="qr-title">Title <span className="text-destructive">*</span></Label>
+   389→          <Input id="qr-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="My QR Code" />
+   390→        </div>
+   391→        <Separator />
+   392→        {/* Dynamic QR toggle — enables scan tracking, analytics, editable
+   393→            destination, password protection, expiry & redirect rules. */}
+   394→        <div className={cn(
+   395→          'rounded-xl border p-4 transition-colors',
+   396→          isDynamic ? 'border-brand/40 bg-brand-muted/30' : 'border-border bg-muted/30'
+   397→        )}>
+   398→          <div className="flex items-start justify-between gap-3">
+   399→            <div className="min-w-0">
+   400→              <div className="flex items-center gap-1.5">
+   401→                <Sparkles className="h-4 w-4 text-brand" />
+   402→                <p className="text-sm font-semibold">Dynamic QR Code</p>
+   403→              </div>
+   404→              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+   405→                {isDynamic
+   406→                  ? 'Track scans, edit the destination later, add password protection, expiry & redirect rules.'
+   407→                  : 'Enable for scan tracking, analytics & editable destination.'}
+   408→              </p>
+   409→              <p className="mt-1 text-xs text-muted-foreground">
+   410→                Plan limit: {dynamicLimit === null ? 'unlimited' : dynamicLimit} dynamic codes
+   411→              </p>
+   412→            </div>
+   413→            <Switch checked={isDynamic} onCheckedChange={setIsDynamic} aria-label="Toggle dynamic QR" />
+   414→          </div>
+   415→        </div>
+   416→        <Separator />
+   417→        <div className="space-y-4">
+   418→          {def.fields.map((f) => <FieldRenderer key={f.key} field={f} values={formValues} onChange={onFieldChange} />)}
+   419→        </div>
+   420→        {!user && (
+   421→          <div className="rounded-xl border border-brand/30 bg-brand-muted/30 p-4">
+   422→            <div className="flex items-start gap-3">
+   423→              <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
+   424→              <div className="flex-1">
+   425→                <p className="text-sm font-medium">Save and track this QR code — Free account</p>
+   426→                <p className="mt-1 text-xs text-muted-foreground">Create an account to enable dynamic links, scan analytics and team sharing.</p>
+   427→                <Button size="sm" className="mt-3 bg-brand text-brand-foreground hover:bg-brand/90" onClick={() => navigate('signup')}>Sign up free →</Button>
+   428→              </div>
+   429→            </div>
+   430→          </div>
+   431→        )}
+   432→      </CardContent>
+   433→    </Card>
+   434→  )
+   435→}
+   436→
+   437→function PreviewCard({ payload, design, logoDataUrl, onDownload, downloading, onSave, saving, user, navigate, isDynamic }: {
+   438→  payload: string
+   439→  design: QrDesign
+   440→  logoDataUrl: string | null
+   441→  onDownload: (k: 'png' | 'svg' | 'pdf') => void
+   442→  downloading: boolean
+   443→  onSave: () => void
+   444→  saving: boolean
+   445→  user: ReturnType<typeof useAuthStore.getState>['user']
+   446→  navigate: (v: Parameters<ReturnType<typeof useRouterStore.getState>['navigate']>[0]) => void
+   447→  isDynamic: boolean
+   448→}) {
+   449→  return (
+   450→    <Card className="rounded-2xl">
+   451→      <CardContent className="space-y-4 p-6">
+   452→        <div className="flex justify-center">
+   453→          <div className="qr-frame p-4 shadow-sm"><QrPreview payload={payload || ' '} design={design} logoDataUrl={logoDataUrl} size={240} /></div>
+   454→        </div>
+   455→        {isDynamic && (
+   456→          <div className="rounded-lg border border-brand/30 bg-brand-muted/20 px-3 py-2 text-center text-[11px] font-medium text-brand">
+   457→            <Sparkles className="mr-1 inline h-3 w-3" /> Dynamic — scans tracked
+   458→          </div>
+   459→        )}
+   460→        <div className="flex flex-wrap gap-2">
+   461→          <Button onClick={() => onDownload('png')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> PNG</Button>
+   462→          <Button onClick={() => onDownload('svg')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> SVG</Button>
+   463→          <Button onClick={() => onDownload('pdf')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> PDF</Button>
+   464→        </div>
+   465→        {user ? (
+   466→          <Button onClick={onSave} disabled={saving} className="w-full bg-brand text-brand-foreground hover:bg-brand/90"><Save className="h-4 w-4" /> {saving ? 'Saving...' : isDynamic ? 'Save Dynamic QR' : 'Save to library'}</Button>
+   467→        ) : (
+   468→          <Button onClick={() => navigate('signup')} className="w-full bg-brand text-brand-foreground hover:bg-brand/90">Sign up to save & track</Button>
+   469→        )}
+   470→      </CardContent>
+   471→    </Card>
+   472→  )
+   473→}
+   474→
+   475→function FieldRenderer({ field, values, onChange }: { field: QrTypeField; values: Record<string, string | boolean>; onChange: (k: string, v: string | boolean) => void }) {
+   476→  if (field.showIf && !field.showIf(values)) return null
+   477→  const value = values[field.key]
+   478→  const strVal = typeof value === 'boolean' ? '' : value
+   479→  const label = (
+   480→    <Label htmlFor={field.key} className="text-sm font-medium">{field.label}{field.required && <span className="text-destructive"> *</span>}</Label>
+   481→  )
+   482→  if (field.type === 'checkbox') {
+   483→    return (
+   484→      <div className="flex items-center gap-2.5">
+   485→        <Checkbox id={field.key} checked={!!value} onCheckedChange={(c) => onChange(field.key, c === true)} />
+   486→        <Label htmlFor={field.key} className="text-sm font-medium">{field.label}</Label>
+   487→      </div>
+   488→    )
+   489→  }
+   490→  if (field.type === 'textarea') {
+   491→    return (
+   492→      <div className="space-y-2">
+   493→        {label}
+   494→        <Textarea id={field.key} value={strVal} onChange={(e) => onChange(field.key, e.target.value)} placeholder={field.placeholder} />
+   495→        {field.helper && <p className="text-xs text-muted-foreground">{field.helper}</p>}
+   496→      </div>
+   497→    )
+   498→  }
+   499→  if (field.type === 'select') {
+   500→    return (
+   501→      <div className="space-y-2">
+   502→        {label}
+   503→        <Select value={strVal || field.defaultValue as string} onValueChange={(val) => onChange(field.key, val)}>
+   504→          <SelectTrigger className="w-full"><SelectValue placeholder="Select..." /></SelectTrigger>
+   505→          <SelectContent>{field.options?.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+   506→        </Select>
+   507→        {field.helper && <p className="text-xs text-muted-foreground">{field.helper}</p>}
+   508→      </div>
+   509→    )
+   510→  }
+   511→  return (
+   512→    <div className="space-y-2">
+   513→      {label}
+   514→      <Input id={field.key} type={field.type} value={strVal} onChange={(e) => onChange(field.key, e.target.value)} placeholder={field.placeholder} />
+   515→      {field.helper && <p className="text-xs text-muted-foreground">{field.helper}</p>}
+   516→    </div>
+   517→  )
+   518→}
+   519→
+   520→function Customizer({ design, updateDesign, logoDataUrl, onLogoUpload, onLogoRemove, fileInputRef }: {
+   521→  design: QrDesign
+   522→  updateDesign: (patch: Partial<QrDesign>) => void
+   523→  logoDataUrl: string | null
+   524→  onLogoUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
+   525→  onLogoRemove: () => void
+   526→  fileInputRef: React.RefObject<HTMLInputElement | null>
+   527→}) {
+   528→  return (
+   529→    <Card className="rounded-2xl">
+   530→      <CardContent className="space-y-1 p-6">
+   531→        <h2 className="pb-2 text-base font-semibold">Customize</h2>
+   532→        <CustomSection title="Colors">
+   533→          <div className="space-y-4">
+   534→            <div>
+   535→              <p className="mb-2 text-xs font-medium text-muted-foreground">Foreground color</p>
+   536→              <div className="flex flex-wrap items-center gap-2">
+   537→                {COLOR_PRESETS.map((c) => (
+   538→                  <button key={c} onClick={() => updateDesign({ fgColor: c })} aria-label={c}
+   539→                    className={cn('h-7 w-7 rounded-full border-2 tap-none', design.fgColor === c ? 'border-brand ring-2 ring-brand/30' : 'border-border')}
+   540→                    style={{ backgroundColor: c }} />
+   541→                ))}
+   542→                <input type="color" value={design.fgColor} onChange={(e) => updateDesign({ fgColor: e.target.value })} className="h-7 w-10 cursor-pointer rounded border border-border bg-transparent p-0" />
+   543→              </div>
+   544→            </div>
+   545→            <div>
+   546→              <p className="mb-2 text-xs font-medium text-muted-foreground">Background color</p>
+   547→              <div className="flex flex-wrap items-center gap-2">
+   548→                {BG_PRESETS.map((c) => (
+   549→                  <button key={c} onClick={() => updateDesign({ bgColor: c, transparentBg: false })} aria-label={c}
+   550→                    className={cn('h-7 w-7 rounded-full border-2 tap-none', design.bgColor === c && !design.transparentBg ? 'border-brand ring-2 ring-brand/30' : 'border-border')}
+   551→                    style={{ backgroundColor: c }} />
+   552→                ))}
+   553→                <input type="color" value={design.bgColor} onChange={(e) => updateDesign({ bgColor: e.target.value, transparentBg: false })} className="h-7 w-10 cursor-pointer rounded border border-border bg-transparent p-0" />
+   554→              </div>
+   555→            </div>
+   556→            <div className="flex items-center gap-2">
+   557→              <Checkbox id="tp-bg" checked={design.transparentBg} onCheckedChange={(c) => updateDesign({ transparentBg: c === true })} />
+   558→              <Label htmlFor="tp-bg" className="text-xs font-medium">Transparent background</Label>
+   559→            </div>
+   560→          </div>
+   561→        </CustomSection>
+   562→        <CustomSection title="Dot Style">
+   563→          <div className="grid grid-cols-3 gap-2">
+   564→            {DOT_STYLES.map((s) => (
+   565→              <button key={s.id} onClick={() => updateDesign({ dotStyle: s.id })}
+   566→                className={cn('rounded-lg border px-2 py-2.5 text-xs font-medium tap-none', design.dotStyle === s.id ? 'border-brand bg-brand-muted text-brand' : 'border-border hover:border-brand/40')}>{s.label}</button>
+   567→            ))}
+   568→          </div>
+   569→        </CustomSection>
+   570→        <CustomSection title="Eye Style">
+   571→          <div className="grid grid-cols-3 gap-2">
+   572→            {EYE_STYLES.map((s) => (
+   573→              <button key={s.id} onClick={() => updateDesign({ eyeStyle: s.id })}
+   574→                className={cn('rounded-lg border px-2 py-2.5 text-xs font-medium tap-none', design.eyeStyle === s.id ? 'border-brand bg-brand-muted text-brand' : 'border-border hover:border-brand/40')}>{s.label}</button>
+   575→            ))}
+   576→          </div>
+   577→        </CustomSection>
+   578→        <CustomSection title="Error Correction">
+   579→          <div className="grid grid-cols-4 gap-2">
+   580→            {EC_LEVELS.map((e) => (
+   581→              <button key={e.id} onClick={() => updateDesign({ errorCorrection: e.id })}
+   582→                className={cn('rounded-lg border px-2 py-2.5 text-xs font-bold tap-none', design.errorCorrection === e.id ? 'border-brand bg-brand-muted text-brand' : 'border-border hover:border-brand/40')}>{e.label}</button>
+   583→            ))}
+   584→          </div>
+   585→          <p className="mt-2 text-xs text-muted-foreground">{EC_LEVELS.find((e) => e.id === design.errorCorrection)?.helper}</p>
+   586→        </CustomSection>
+   587→        <CustomSection title="Output Size">
+   588→          <div className="grid grid-cols-4 gap-2">
+   589→            {OUTPUT_SIZES.map((s) => (
+   590→              <button key={s} onClick={() => updateDesign({ outputSize: s })}
+   591→                className={cn('rounded-lg border px-2 py-2.5 text-xs font-medium tap-none', design.outputSize === s ? 'border-brand bg-brand-muted text-brand' : 'border-border hover:border-brand/40')}>{s}</button>
+   592→            ))}
+   593→          </div>
+   594→        </CustomSection>
+   595→        <CustomSection title="Gradient">
+   596→          <div className="space-y-3">
+   597→            <div className="grid grid-cols-3 gap-2">
+   598→              {(['none', 'linear', 'radial'] as const).map((g) => (
+   599→                <button key={g} onClick={() => updateDesign({ gradientType: g })}
+   600→                  className={cn('rounded-lg border px-2 py-2.5 text-xs font-medium capitalize tap-none', design.gradientType === g ? 'border-brand bg-brand-muted text-brand' : 'border-border hover:border-brand/40')}>{g}</button>
+   601→              ))}
+   602→            </div>
+   603→            {design.gradientType !== 'none' && (
+   604→              <div className="space-y-3">
+   605→                <div className="grid grid-cols-2 gap-3">
+   606→                  <div><p className="mb-1 text-xs text-muted-foreground">Start</p><input type="color" value={design.gradientStart} onChange={(e) => updateDesign({ gradientStart: e.target.value })} className="h-8 w-full cursor-pointer rounded border border-border bg-transparent p-0" /></div>
+   607→                  <div><p className="mb-1 text-xs text-muted-foreground">End</p><input type="color" value={design.gradientEnd} onChange={(e) => updateDesign({ gradientEnd: e.target.value })} className="h-8 w-full cursor-pointer rounded border border-border bg-transparent p-0" /></div>
+   608→                </div>
+   609→                {design.gradientType === 'linear' && (
+   610→                  <div><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Angle</span><span className="font-mono">{design.gradientAngle}°</span></div><Slider value={[design.gradientAngle]} min={0} max={360} onValueChange={(val) => updateDesign({ gradientAngle: val[0] })} /></div>
+   611→                )}
+   612→              </div>
+   613→            )}
+   614→          </div>
+   615→        </CustomSection>
+   616→        <CustomSection title="Logo">
+   617→          <div className="space-y-3">
+   618→            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onLogoUpload} />
+   619→            {logoDataUrl ? (
+   620→              <div className="flex items-center gap-3 rounded-lg border border-border p-3">
+   621→                <img src={logoDataUrl} alt="Logo" className="h-12 w-12 rounded object-contain" />
+   622→                <div className="flex-1 text-xs text-muted-foreground">Logo uploaded</div>
+   623→                <Button size="icon" variant="ghost" onClick={onLogoRemove}><X className="h-4 w-4" /></Button>
+   624→              </div>
+   625→            ) : (
+   626→              <button onClick={() => fileInputRef.current?.click()} className="flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-border p-5 text-xs text-muted-foreground hover:border-brand/40 hover:text-brand tap-none">
+   627→                <ImageIcon className="h-6 w-6" /> Click to upload logo (PNG/SVG, ≤1MB)
+   628→              </button>
+   629→            )}
+   630→            <div><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Logo size</span><span className="font-mono">{design.logoSize}%</span></div><Slider value={[design.logoSize]} min={10} max={40} onValueChange={(val) => updateDesign({ logoSize: val[0] })} /></div>
+   631→            <div><div className="mb-1 flex justify-between text-xs"><span className="text-muted-foreground">Logo padding</span><span className="font-mono">{design.logoPadding}px</span></div><Slider value={[design.logoPadding]} min={0} max={20} onValueChange={(val) => updateDesign({ logoPadding: val[0] })} /></div>
+   632→          </div>
+   633→        </CustomSection>
+   634→        <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+   635→          <div className="mb-1 flex items-center gap-1.5 font-medium text-foreground"><AlertCircle className="h-3.5 w-3.5" /> Tip</div>
+   636→          Use error correction <strong>Q</strong> or <strong>H</strong> when adding a logo so the QR stays scannable.
+   637→        </div>
+   638→      </CardContent>
+   639→    </Card>
+   640→  )
+   641→}
+   642→
+   643→function CustomSection({ title, defaultOpen = false, children }: { title: string; defaultOpen?: boolean; children: React.ReactNode }) {
+   644→  return (
+   645→    <Collapsible defaultOpen={defaultOpen}>
+   646→      <CollapsibleTrigger className="flex w-full items-center justify-between py-2.5 text-sm font-medium hover:underline tap-none">
+   647→        {title}
+   648→        <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform [[data-state=open]>&]:rotate-180" />
+   649→      </CollapsibleTrigger>
+   650→      <CollapsibleContent className="pb-3">{children}</CollapsibleContent>
+   651→      <Separator />
+   652→    </Collapsible>
+   653→  )
+   654→}
+   655→
+   656→export default TypePageView
+   657→

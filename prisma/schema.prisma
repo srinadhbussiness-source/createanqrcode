@@ -1,0 +1,233 @@
+// CreateAnQRCode — Prisma schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String?
+  passwordHash    String?
+  avatarUrl       String?
+  plan            String   @default("free") // free | starter | pro | business
+  trialEndsAt     DateTime?
+  timezone        String   @default("Asia/Kolkata")
+  dateFormat      String   @default("DD/MM/YYYY")
+  notifSecurity   Boolean  @default(true)
+  notifTrial      Boolean  @default(true)
+  notifScans      Boolean  @default(true)
+  notifExpiry     Boolean  @default(true)
+  notifDigest     Boolean  @default(false)
+  notifUpdates    Boolean  @default(false)
+  emailVerified   Boolean  @default(false)
+  verifyToken     String?
+  verifyTokenExp  DateTime?
+  resetToken      String?
+  resetTokenExp   DateTime?
+  role            String   @default("user") // user | admin | superadmin
+  suspended       Boolean  @default(false)
+  suspendedAt     DateTime?
+  suspendedReason String?
+  // Two-Factor Authentication (TOTP). `twoFactorSecret` is the base32 secret
+  // stored during setup (only enabled after verification). Backup codes are
+  // stored as a JSON array of bcrypt hashes — verified by re-hashing each.
+  twoFactorSecret      String?
+  twoFactorEnabled     Boolean @default(false)
+  twoFactorBackupCodes String? // JSON array of hashed backup codes
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  qrCodes  QrCode[]
+  folders  Folder[]
+  apiKeys  ApiKey[]
+  templates Template[]
+  sessions  Session[]
+  auditLogs AuditLog[]
+  webhooks Webhook[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?  // null = system
+  actorEmail String?
+  action    String   // e.g. "user.suspend", "qr.takedown", "admin.login"
+  targetType String? // "user" | "qr_code" | "payment" | "system"
+  targetId  String?
+  metadata  String?  // JSON string
+  ip        String?
+  createdAt DateTime @default(now())
+
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId])
+  @@index([action])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  device    String?
+  browser   String?
+  country   String?
+  current   Boolean  @default(false)
+  // Pending 2FA sessions: created by /api/auth/login when the user has 2FA
+  // enabled, but the cookie is NOT set. The token is returned as `tempToken`
+  // to the client, which must then POST it + a valid TOTP token to
+  // /api/auth/login/2fa to promote this row to a real session.
+  twoFactorPending Boolean @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model QrCode {
+  id             String   @id @default(cuid())
+  userId         String
+  title          String
+  qrType         String
+  isDynamic      Boolean  @default(false)
+  status         String   @default("active") // active | paused | expired | archived | trashed
+  staticPayload  String?
+  // dynamic fields
+  shortCode      String?  @unique
+  destinationUrl String?
+  passwordHash   String?
+  expiresAt      DateTime?
+  maxScans       Int?
+  redirectRules  String?  // JSON string
+  // Scheduled activation: when set to a future time, the public /q/{code}
+  // redirect shows a "Not yet active" page until activatesAt passes. Used by
+  // campaigns that want to publish a QR in advance but go live later.
+  activatesAt    DateTime?
+  // design
+  design         String   // JSON string of design settings
+  logoDataUrl    String?
+  overlayDataUrl String?
+  overlayOpacity Int      @default(40)
+  favorite       Boolean  @default(false)
+  archived       Boolean  @default(false)
+  trashed        Boolean  @default(false)
+  trashedAt      DateTime?
+  folderId       String?
+  tags           String   @default("[]") // JSON string array
+  scanCount      Int      @default(0)
+  downloadCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  scans  Scan[]
+  revisions QrCodeRevision[]
+}
+
+// Revision history for QR codes — logged on every PATCH so users can view the
+// edit timeline and revert to a previous version. Used by qr-detail.tsx's
+// "History" tab.
+model QrCodeRevision {
+  id        String   @id @default(cuid())
+  qrCodeId  String
+  // Snapshot of the editable fields at this point in time.
+  title          String
+  staticPayload  String?
+  destinationUrl String?
+  design         String   // JSON string
+  logoDataUrl    String?
+  overlayDataUrl String?
+  overlayOpacity Int      @default(40)
+  redirectRules  String?  // JSON string
+  expiresAt      DateTime?
+  maxScans       Int?
+  status         String
+  // Who made the change + when.
+  editedBy   String?  // user email (null = system/API)
+  editedAt   DateTime @default(now())
+  qrCode     QrCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+
+  @@index([qrCodeId, editedAt])
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  color     String   @default("#7C3AED")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qrCodes   QrCode[]
+}
+
+model Scan {
+  id          String   @id @default(cuid())
+  qrCodeId    String
+  countryCode String?
+  countryName String?
+  city        String?
+  deviceType  String?
+  os          String?
+  browser     String?
+  referrer    String?
+  language    String?
+  ipHash      String?
+  scannedAt   DateTime @default(now())
+  qrCode      QrCode   @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+
+  @@index([qrCodeId, scannedAt])
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  userId    String?  // null = system template
+  name      String
+  category  String   // business | events | marketing | education | india
+  isPro     Boolean  @default(false)
+  design    String   // JSON string
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  keyHash      String   @unique
+  prefix       String   // shown prefix e.g. qac_live_aBcD
+  scopes       String   @default("read") // read | read,write
+  lastUsed     DateTime?
+  // Per-key usage counter for the API usage dashboard. Incremented on each
+  // authenticated request (throttled — see v1/qr-codes/route.ts). Reset
+  // periodically (monthly) by a separate maintenance job or manually via the
+  // usage endpoint. `limit` is the per-period ceiling (default 10,000).
+  apiRequests  Int      @default(0)
+  lastResetAt  DateTime @default(now())
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Payment {
+  id        String   @id @default(cuid())
+  userId    String
+  plan      String
+  amount    Int
+  currency  String   // INR | USD
+  status    String   @default("paid")
+  invoiceId String?
+  createdAt DateTime @default(now())
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  url       String
+  secret    String   // for HMAC signing
+  events    String   @default("scan") // comma-separated: scan, created, expired
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

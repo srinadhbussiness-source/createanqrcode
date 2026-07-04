@@ -1,0 +1,822 @@
+     1→'use client'
+     2→
+     3→import { useMemo, useState, useEffect } from 'react'
+     4→import { useQuery, useQueryClient } from '@tanstack/react-query'
+     5→import { toast } from 'sonner'
+     6→import {
+     7→  BarChart3, Users, Globe, Clock, Download, Lock, ArrowRight,
+     8→  Smartphone, Monitor, Tablet, Activity, Crown, ChevronRight, Radio,
+     9→} from 'lucide-react'
+    10→import {
+    11→  LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid,
+    12→  BarChart, Bar, Cell, PieChart, Pie,
+    13→} from 'recharts'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    18→import {
+    19→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    20→} from '@/components/ui/table'
+    21→import { useRouterStore, useAuthStore } from '@/lib/stores'
+    22→import { api } from '@/lib/api'
+    23→import { PLAN_LIMITS, type Plan } from '@/lib/types'
+    24→import { formatNumber, formatDate, timeAgo } from '@/lib/format'
+    25→import { cn } from '@/lib/utils'
+    26→import { getSupabaseClient } from '@/lib/supabase-client'
+    27→
+    28→interface AnalyticsSummary {
+    29→  hasAccess: boolean
+    30→  days: number | null
+    31→  rangeDays: number
+    32→  total: number
+    33→  unique: number
+    34→  topCountries: { code: string; name: string; count: number }[]
+    35→  devices: { name: string; count: number }[]
+    36→  oses: { name: string; count: number }[]
+    37→  browsers: { name: string; count: number }[]
+    38→  referrers: { name: string; count: number }[]
+    39→  overTime: { date: string; total: number; unique: number }[]
+    40→  peakHour: number
+    41→  heatmap: number[][]
+    42→  qrPerformance: { id: string; title: string; qrType: string; count: number }[]
+    43→  recent: {
+    44→    id: string
+    45→    countryCode: string | null
+    46→    countryName: string | null
+    47→    deviceType: string | null
+    48→    os: string | null
+    49→    browser: string | null
+    50→    qrTitle: string
+    51→    qrType: string
+    52→    scannedAt: string
+    53→  }[]
+    54→}
+    55→
+    56→type RangeKey = '7' | '30' | '90' | '365' | 'all'
+    57→
+    58→const RANGE_OPTIONS: { key: RangeKey; label: string; days: number }[] = [
+    59→  { key: '7', label: '7 days', days: 7 },
+    60→  { key: '30', label: '30 days', days: 30 },
+    61→  { key: '90', label: '90 days', days: 90 },
+    62→  { key: '365', label: '1 year', days: 365 },
+    63→  { key: 'all', label: 'All time', days: 99999 },
+    64→]
+    65→
+    66→// Country code → full name (monochrome — no flag emojis which are colorful)
+    67→const COUNTRY_NAMES: Record<string, string> = {
+    68→  IN: 'India', US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
+    69→  DE: 'Germany', FR: 'France', JP: 'Japan', CN: 'China', BR: 'Brazil', MX: 'Mexico',
+    70→  ES: 'Spain', IT: 'Italy', NL: 'Netherlands', SG: 'Singapore', AE: 'UAE', SA: 'Saudi Arabia',
+    71→  ZA: 'South Africa', NG: 'Nigeria', KE: 'Kenya', EG: 'Egypt', RU: 'Russia', KR: 'South Korea',
+    72→  ID: 'Indonesia', TH: 'Thailand', MY: 'Malaysia', PH: 'Philippines', VN: 'Vietnam',
+    73→  PK: 'Pakistan', BD: 'Bangladesh', LK: 'Sri Lanka', NP: 'Nepal', TR: 'Turkey', PL: 'Poland',
+    74→  SE: 'Sweden', CH: 'Switzerland', AT: 'Austria', BE: 'Belgium', IE: 'Ireland', PT: 'Portugal',
+    75→  GR: 'Greece', FI: 'Finland', DK: 'Denmark', NO: 'Norway', CZ: 'Czechia', RO: 'Romania',
+    76→  HU: 'Hungary', IL: 'Israel', AR: 'Argentina', CL: 'Chile', CO: 'Colombia', PE: 'Peru',
+    77→  VE: 'Venezuela', NZ: 'New Zealand', HK: 'Hong Kong', TW: 'Taiwan',
+    78→}
+    79→
+    80→function countryName(code: string | null | undefined): string {
+    81→  if (!code) return 'Unknown'
+    82→  return COUNTRY_NAMES[code.toUpperCase()] ?? code.toUpperCase()
+    83→}
+    84→
+    85→function countryCode(code: string | null | undefined): string {
+    86→  return code ? code.toUpperCase() : '—'
+    87→}
+    88→
+    89→const DEVICE_ICON: Record<string, typeof Smartphone> = {
+    90→  mobile: Smartphone, tablet: Tablet, desktop: Monitor,
+    91→}
+    92→
+    93→const DEVICE_COLOR = '#18181B'
+    94→const UNIQUE_COLOR = '#9ca3af' // muted grey
+    95→
+    96→const DONUT_COLORS = ['#18181B', '#52525B', '#71717A', '#A1A1AA', '#D4D4D8', '#E4E4E7']
+    97→
+    98→export function AnalyticsView() {
+    99→  const navigate = useRouterStore((s) => s.navigate)
+   100→  const user = useAuthStore((s) => s.user)
+   101→  const queryClient = useQueryClient()
+   102→  const plan = (user?.plan ?? 'free') as Plan
+   103→  const limits = PLAN_LIMITS[plan]
+   104→
+   105→  const [range, setRange] = useState<RangeKey>(
+   106→    limits.analyticsDays && limits.analyticsDays >= 30 ? '30' : '7'
+   107→  )
+   108→  const [granularity, setGranularity] = useState<'daily' | 'weekly' | 'monthly'>('daily')
+   109→
+   110→  const { data, isLoading } = useQuery({
+   111→    queryKey: ['analytics', range],
+   112→    queryFn: () => api.get<AnalyticsSummary>('/api/analytics/summary?range=' + range),
+   113→    enabled: plan !== 'free',
+   114→    // Real-time: refetch every 15s as a fallback alongside Supabase Realtime.
+   115→    // The Supabase subscription (below) pushes instant updates for the live feed.
+   116→    refetchInterval: 15000,
+   117→  })
+   118→
+   119→  // ── Supabase Realtime: subscribe to new scans for the live feed ──
+   120→  useEffect(() => {
+   121→    if (plan === 'free') return
+   122→    const sb = getSupabaseClient()
+   123→    if (!sb) return // Supabase not configured — fall back to polling only
+   124→
+   125→    const channel = sb
+   126→      .channel('scans-realtime')
+   127→      .on('postgres_changes',
+   128→        { event: 'INSERT', schema: 'public', table: 'scans' },
+   129→        () => {
+   130→          // Invalidate the query to refetch with the new scan
+   131→          queryClient.invalidateQueries({ queryKey: ['analytics', range] })
+   132→        }
+   133→      )
+   134→      .subscribe()
+   135→
+   136→    return () => { sb.removeChannel(channel) }
+   137→  }, [plan, range, queryClient])
+   138→
+   139→  // ---------- Free user locked state ----------
+   140→  if (plan === 'free') {
+   141→    return (
+   142→      <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+   143→        <div>
+   144→          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Analytics</h1>
+   145→          <p className="mt-1 text-sm text-muted-foreground">
+   146→            Track every scan with deep, real-time insights.
+   147→          </p>
+   148→        </div>
+   149→        <Card className="relative overflow-hidden border-brand/30">
+   150→          <CardContent className="p-0">
+   151→            <div className="relative">
+   152→              {/* Blurred preview */}
+   153→              <div className="pointer-events-none select-none p-6 blur-sm" aria-hidden>
+   154→                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   155→                  {[0, 1, 2, 3].map((i) => (
+   156→                    <div key={i} className="rounded-xl border border-border bg-card p-4">
+   157→                      <div className="h-3 w-20 rounded bg-muted" />
+   158→                      <div className="mt-2 h-7 w-16 rounded bg-muted" />
+   159→                    </div>
+   160→                  ))}
+   161→                </div>
+   162→                <div className="mt-4 h-64 rounded-xl border border-border bg-card p-4">
+   163→                  <div className="h-full w-full rounded bg-gradient-to-br from-brand-muted/60 to-muted" />
+   164→                </div>
+   165→              </div>
+   166→
+   167→              {/* Lock overlay */}
+   168→              <div className="absolute inset-0 grid place-items-center bg-background/70 backdrop-blur-sm">
+   169→                <div className="max-w-md p-6 text-center">
+   170→                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-muted text-brand">
+   171→                    <Lock className="h-7 w-7" />
+   172→                  </div>
+   173→                  <h2 className="mt-4 text-xl font-bold">Unlock scan analytics</h2>
+   174→                  <p className="mt-1.5 text-sm text-muted-foreground">
+   175→                    Upgrade to a paid plan to see total scans, unique visitors, top countries,
+   176→                    devices, referrers and real-time activity.
+   177→                  </p>
+   178→                  <Button
+   179→                    onClick={() => navigate('billing')}
+   180→                    className="mt-4 bg-brand text-brand-foreground hover:bg-brand/90"
+   181→                  >
+   182→                    Upgrade to Starter <ArrowRight className="ml-2 h-4 w-4" />
+   183→                  </Button>
+   184→                </div>
+   185→              </div>
+   186→            </div>
+   187→          </CardContent>
+   188→        </Card>
+   189→      </div>
+   190→    )
+   191→  }
+   192→
+   193→  // ---------- Paid user analytics ----------
+   194→  const maxRange = limits.analyticsDays ?? 99999
+   195→  const isRangeAllowed = (r: RangeKey) => {
+   196→    const opt = RANGE_OPTIONS.find((o) => o.key === r)!
+   197→    return opt.days <= maxRange
+   198→  }
+   199→
+   200→  const summary = data
+   201→  const top = summary?.topCountries?.[0]
+   202→
+   203→  const handleExportCSV = () => {
+   204→    if (!summary) return
+   205→    const rows = summary.recent
+   206→    const headers = ['scanned_at', 'qr_code_title', 'qr_type', 'country', 'city', 'device', 'os', 'browser', 'referrer', 'language']
+   207→    const lines = [headers.join(',')]
+   208→    for (const r of rows) {
+   209→      const cells = [
+   210→        r.scannedAt, r.qrTitle, r.qrType, r.countryName ?? '', '', r.deviceType ?? '',
+   211→        r.os ?? '', r.browser ?? '', '', '',
+   212→      ].map((c) => `"${String(c).replace(/"/g, '""')}"`)
+   213→      lines.push(cells.join(','))
+   214→    }
+   215→    const csv = lines.join('\n')
+   216→    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+   217→    const url = URL.createObjectURL(blob)
+   218→    const a = document.createElement('a')
+   219→    a.href = url
+   220→    a.download = `analytics-export-${range}.csv`
+   221→    a.click()
+   222→    URL.revokeObjectURL(url)
+   223→    toast.success('CSV exported')
+   224→  }
+   225→
+   226→  return (
+   227→    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+   228→      {/* Header */}
+   229→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   230→        <div>
+   231→          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Analytics</h1>
+   232→          <p className="mt-1 text-sm text-muted-foreground">
+   233→            Real-time scan insights across all your QR codes.
+   234→          </p>
+   235→        </div>
+   236→        <div className="flex flex-wrap items-center gap-2">
+   237→          <Badge variant="outline" className="gap-1 border-brand/40 text-brand">
+   238→            <Crown className="h-3 w-3" /> {plan.charAt(0).toUpperCase() + plan.slice(1)} plan
+   239→          </Badge>
+   240→          {(plan === 'pro' || plan === 'business') && (
+   241→            <Button variant="outline" size="sm" onClick={handleExportCSV}>
+   242→              <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
+   243→            </Button>
+   244→          )}
+   245→        </div>
+   246→      </div>
+   247→
+   248→      {/* Period selector */}
+   249→      <div className="flex flex-wrap items-center gap-1 rounded-lg border border-border bg-card p-1">
+   250→        {RANGE_OPTIONS.map((opt) => {
+   251→          const allowed = isRangeAllowed(opt.key)
+   252→          const active = range === opt.key
+   253→          return (
+   254→            <button
+   255→              key={opt.key}
+   256→              onClick={() => allowed && setRange(opt.key)}
+   257→              disabled={!allowed}
+   258→              className={cn(
+   259→                'inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all sm:text-sm',
+   260→                active ? 'bg-brand text-brand-foreground shadow-sm' : 'text-muted-foreground hover:bg-accent',
+   261→                !allowed && 'cursor-not-allowed opacity-40'
+   262→              )}
+   263→              title={!allowed ? `Available on a higher plan` : undefined}
+   264→            >
+   265→              {opt.label}
+   266→              {!allowed && <Lock className="h-3 w-3" />}
+   267→            </button>
+   268→          )
+   269→        })}
+   270→      </div>
+   271→
+   272→      {isLoading || !summary ? (
+   273→        <div className="space-y-4">
+   274→          {/* Stat card skeletons */}
+   275→          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+   276→            {Array.from({ length: 4 }).map((_, i) => (
+   277→              <div key={i} className="h-20 rounded-xl border border-border p-4 sm:p-5">
+   278→                <div className="flex items-start justify-between gap-2">
+   279→                  <div className="space-y-1.5">
+   280→                    <div className="skeleton-shimmer h-3 w-20 rounded" />
+   281→                    <div className="skeleton-shimmer h-6 w-16 rounded" />
+   282→                  </div>
+   283→                  <div className="skeleton-shimmer h-9 w-9 shrink-0 rounded-lg" />
+   284→                </div>
+   285→              </div>
+   286→            ))}
+   287→          </div>
+   288→          {/* Chart skeleton */}
+   289→          <div className="skeleton-shimmer h-64 w-full rounded-xl" />
+   290→          {/* Donut skeletons side by side */}
+   291→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   292→            <div className="skeleton-shimmer h-48 w-full rounded-xl" />
+   293→            <div className="skeleton-shimmer h-48 w-full rounded-xl" />
+   294→          </div>
+   295→        </div>
+   296→      ) : (
+   297→        <>
+   298→          {/* Stat cards */}
+   299→          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+   300→            <StatCard
+   301→              label="Total Scans"
+   302→              value={formatNumber(summary.total)}
+   303→              icon={BarChart3}
+   304→              accent
+   305→            />
+   306→            <StatCard
+   307→              label="Unique Visitors"
+   308→              value={formatNumber(summary.unique)}
+   309→              icon={Users}
+   310→            />
+   311→            <StatCard
+   312→              label="Top Country"
+   313→              value={top ? top.name : '—'}
+   314→              hint={top ? `${formatNumber(top.count)} scans` : undefined}
+   315→              icon={Globe}
+   316→            />
+   317→            <StatCard
+   318→              label="Peak Time"
+   319→              value={summary.peakHour >= 0 ? `${String(summary.peakHour).padStart(2, '0')}:00` : '—'}
+   320→              hint={summary.peakHour >= 0 ? 'Busiest hour of day' : undefined}
+   321→              icon={Clock}
+   322→            />
+   323→          </div>
+   324→
+   325→          {/* Scans Over Time */}
+   326→          <Card className="border-border">
+   327→            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   328→              <div>
+   329→                <CardTitle className="text-base">Scans Over Time</CardTitle>
+   330→                <p className="mt-1 text-xs text-muted-foreground">
+   331→                  Daily scan volume vs unique visitors.
+   332→                </p>
+   333→              </div>
+   334→              <Tabs value={granularity} onValueChange={(v) => setGranularity(v as typeof granularity)}>
+   335→                <TabsList>
+   336→                  <TabsTrigger value="daily">Daily</TabsTrigger>
+   337→                  <TabsTrigger value="weekly">Weekly</TabsTrigger>
+   338→                  <TabsTrigger value="monthly">Monthly</TabsTrigger>
+   339→                </TabsList>
+   340→              </Tabs>
+   341→            </CardHeader>
+   342→            <CardContent>
+   343→              <div className="h-72 w-full">
+   344→                <ResponsiveContainer width="100%" height="100%">
+   345→                  <LineChart data={aggregateOverTime(summary.overTime, granularity)} margin={{ top: 5, right: 12, bottom: 5, left: -12 }}>
+   346→                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+   347→                    <XAxis
+   348→                      dataKey="date"
+   349→                      stroke="var(--muted-foreground)"
+   350→                      tick={{ fontSize: 11 }}
+   351→                      tickFormatter={(d) => shortDate(d)}
+   352→                      minTickGap={24}
+   353→                    />
+   354→                    <YAxis stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} allowDecimals={false} />
+   355→                    <Tooltip
+   356→                      contentStyle={{
+   357→                        background: 'var(--card)',
+   358→                        border: '1px solid var(--border)',
+   359→                        borderRadius: 8,
+   360→                        color: 'var(--foreground)',
+   361→                        fontSize: 12,
+   362→                      }}
+   363→                      labelStyle={{ color: 'var(--muted-foreground)' }}
+   364→                    />
+   365→                    <Line type="monotone" dataKey="total" stroke={DEVICE_COLOR} strokeWidth={2} dot={false} name="Total" />
+   366→                    <Line type="monotone" dataKey="unique" stroke={UNIQUE_COLOR} strokeWidth={2} dot={false} name="Unique" strokeDasharray="4 2" />
+   367→                  </LineChart>
+   368→                </ResponsiveContainer>
+   369→              </div>
+   370→              <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+   371→                <span className="flex items-center gap-1.5">
+   372→                  <span className="h-2 w-3 rounded-sm" style={{ background: DEVICE_COLOR }} /> Total scans
+   373→                </span>
+   374→                <span className="flex items-center gap-1.5">
+   375→                  <span className="h-2 w-3 rounded-sm" style={{ background: UNIQUE_COLOR }} /> Unique visitors
+   376→                </span>
+   377→              </div>
+   378→            </CardContent>
+   379→          </Card>
+   380→
+   381→          {/* Top Countries + Top Referrers */}
+   382→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   383→            <Card className="border-border">
+   384→              <CardHeader>
+   385→                <CardTitle className="text-base">Top Countries</CardTitle>
+   386→                <p className="mt-1 text-xs text-muted-foreground">Where your scans come from.</p>
+   387→              </CardHeader>
+   388→              <CardContent>
+   389→                {summary.topCountries.length === 0 ? (
+   390→                  <EmptyChart />
+   391→                ) : (
+   392→                  <div className="h-72 w-full">
+   393→                    <ResponsiveContainer width="100%" height="100%">
+   394→                      <BarChart
+   395→                        layout="vertical"
+   396→                        data={summary.topCountries}
+   397→                        margin={{ top: 0, right: 16, bottom: 0, left: 8 }}
+   398→                      >
+   399→                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+   400→                        <XAxis type="number" stroke="var(--muted-foreground)" tick={{ fontSize: 11 }} allowDecimals={false} />
+   401→                        <YAxis
+   402→                          type="category"
+   403→                          dataKey="code"
+   404→                          stroke="var(--muted-foreground)"
+   405→                          tick={{ fontSize: 11 }}
+   406→                          width={44}
+   407→                          tickFormatter={(v) => countryCode(v)}
+   408→                        />
+   409→                        <Tooltip
+   410→                          contentStyle={{
+   411→                            background: 'var(--card)', border: '1px solid var(--border)',
+   412→                            borderRadius: 8, color: 'var(--foreground)', fontSize: 12,
+   413→                          }}
+   414→                          formatter={(v: number, _n, p) => [`${formatNumber(v)} scans`, p?.payload?.name ?? '']}
+   415→                        />
+   416→                        <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+   417→                          {summary.topCountries.map((_, i) => (
+   418→                            <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+   419→                          ))}
+   420→                        </Bar>
+   421→                      </BarChart>
+   422→                    </ResponsiveContainer>
+   423→                  </div>
+   424→                )}
+   425→                {/* Country list with flags + percentages */}
+   426→                {summary.topCountries.length > 0 && (
+   427→                  <div className="mt-3 space-y-1.5">
+   428→                    {summary.topCountries.slice(0, 5).map((c) => (
+   429→                      <div key={c.code} className="flex items-center justify-between text-xs">
+   430→                        <span className="flex items-center gap-2">
+   431→                          <span className="inline-flex h-5 min-w-[28px] items-center justify-center rounded border border-border px-1 font-mono text-[10px] font-medium text-muted-foreground">{countryCode(c.code)}</span>
+   432→                          <span className="font-medium">{c.name}</span>
+   433→                        </span>
+   434→                        <span className="text-muted-foreground">
+   435→                          {formatNumber(c.count)} · {pct(c.count, summary.total)}%
+   436→                        </span>
+   437→                      </div>
+   438→                    ))}
+   439→                  </div>
+   440→                )}
+   441→              </CardContent>
+   442→            </Card>
+   443→
+   444→            <Card className="border-border">
+   445→              <CardHeader>
+   446→                <CardTitle className="text-base">Top Referrers</CardTitle>
+   447→                <p className="mt-1 text-xs text-muted-foreground">Sources driving scans.</p>
+   448→              </CardHeader>
+   449→              <CardContent>
+   450→                {summary.referrers.length === 0 ? (
+   451→                  <EmptyChart />
+   452→                ) : (
+   453→                  <div className="space-y-3">
+   454→                    {summary.referrers.slice(0, 8).map((r) => {
+   455→                      const max = summary.referrers[0].count || 1
+   456→                      const w = Math.max(6, Math.round((r.count / max) * 100))
+   457→                      return (
+   458→                        <div key={r.name}>
+   459→                          <div className="flex items-center justify-between text-xs">
+   460→                            <span className="truncate font-medium">{r.name}</span>
+   461→                            <span className="ml-2 shrink-0 text-muted-foreground">{formatNumber(r.count)}</span>
+   462→                          </div>
+   463→                          <div className="mt-1 h-2 w-full rounded-full bg-muted">
+   464→                            <div
+   465→                              className="h-full rounded-full bg-brand"
+   466→                              style={{ width: `${w}%` }}
+   467→                            />
+   468→                          </div>
+   469→                        </div>
+   470→                      )
+   471→                    })}
+   472→                  </div>
+   473→                )}
+   474→              </CardContent>
+   475→            </Card>
+   476→          </div>
+   477→
+   478→          {/* Device / OS / Browser donuts */}
+   479→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   480→            <DonutCard title="Device Breakdown" data={summary.devices} icon={Smartphone} />
+   481→            <DonutCard title="Operating System" data={summary.oses} icon={Monitor} />
+   482→            <DonutCard title="Browser" data={summary.browsers} icon={Globe} />
+   483→          </div>
+   484→
+   485→          {/* QR Performance + Real-time feed */}
+   486→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   487→            <Card className="border-border">
+   488→              <CardHeader>
+   489→                <CardTitle className="text-base">QR Code Performance</CardTitle>
+   490→                <p className="mt-1 text-xs text-muted-foreground">Top scanned QR codes.</p>
+   491→              </CardHeader>
+   492→              <CardContent>
+   493→                {summary.qrPerformance.length === 0 ? (
+   494→                  <EmptyChart label="No scans recorded yet." />
+   495→                ) : (
+   496→                  <div className="overflow-hidden rounded-lg border border-border">
+   497→                    <Table>
+   498→                      <TableHeader>
+   499→                        <TableRow>
+   500→                          <TableHead>Title</TableHead>
+   501→                          <TableHead className="hidden sm:table-cell">Type</TableHead>
+   502→                          <TableHead className="text-right">Scans</TableHead>
+   503→                        </TableRow>
+   504→                      </TableHeader>
+   505→                      <TableBody>
+   506→                        {summary.qrPerformance.slice(0, 8).map((q) => (
+   507→                          <TableRow key={q.id}>
+   508→                            <TableCell className="max-w-[160px] truncate font-medium">{q.title}</TableCell>
+   509→                            <TableCell className="hidden sm:table-cell">
+   510→                              <Badge variant="secondary" className="text-[10px] capitalize">{q.qrType}</Badge>
+   511→                            </TableCell>
+   512→                            <TableCell className="text-right">{formatNumber(q.count)}</TableCell>
+   513→                          </TableRow>
+   514→                        ))}
+   515→                      </TableBody>
+   516→                    </Table>
+   517→                  </div>
+   518→                )}
+   519→              </CardContent>
+   520→            </Card>
+   521→
+   522→            {/* Real-time feed */}
+   523→            <Card className="border-brand/30">
+   524→              <CardHeader className="flex flex-row items-center justify-between">
+   525→                <div>
+   526→                  <CardTitle className="text-base">Real-Time Feed</CardTitle>
+   527→                  <p className="mt-1 text-xs text-muted-foreground">Latest scan events.</p>
+   528→                </div>
+   529→                <Badge className="bg-brand-muted text-brand">
+   530→                  <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-brand" />
+   531→                  Live
+   532→                </Badge>
+   533→              </CardHeader>
+   534→              <CardContent>
+   535→                {summary.recent.length === 0 ? (
+   536→                  <EmptyChart label="No scans in this period." />
+   537→                ) : (
+   538→                  <div className="max-h-80 space-y-1 overflow-y-auto scroll-thin pr-1">
+   539→                    {summary.recent.slice(0, 20).map((s) => {
+   540→                      const DIcon = (s.deviceType && DEVICE_ICON[s.deviceType.toLowerCase()]) ?? Radio
+   541→                      return (
+   542→                        <div
+   543→                          key={s.id}
+   544→                          className="flex items-center gap-3 rounded-lg border border-border bg-card/50 p-2.5"
+   545→                        >
+   546→                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-border bg-card font-mono text-[10px] font-semibold text-muted-foreground">
+   547→                            {countryCode(s.countryCode)}
+   548→                          </span>
+   549→                          <div className="min-w-0 flex-1">
+   550→                            <p className="truncate text-xs font-medium">{s.qrTitle}</p>
+   551→                            <p className="truncate text-[11px] text-muted-foreground">
+   552→                              {s.countryName ?? 'Unknown'} · {s.os ?? '?'} · {s.browser ?? '?'}
+   553→                            </p>
+   554→                          </div>
+   555→                          <div className="flex shrink-0 items-center gap-2">
+   556→                            <DIcon className="h-3.5 w-3.5 text-muted-foreground" />
+   557→                            <span className="text-[11px] text-muted-foreground">{timeAgo(s.scannedAt)}</span>
+   558→                          </div>
+   559→                        </div>
+   560→                      )
+   561→                    })}
+   562→                  </div>
+   563→                )}
+   564→              </CardContent>
+   565→            </Card>
+   566→          </div>
+   567→
+   568→          {/* Scan heatmap (Business only) */}
+   569→          {plan === 'business' && (
+   570→            <Card className="border-border">
+   571→              <CardHeader>
+   572→                <CardTitle className="text-base">Scan Heatmap</CardTitle>
+   573→                <p className="mt-1 text-xs text-muted-foreground">
+   574→                  Activity by day of week and hour. Hover for count.
+   575→                </p>
+   576→              </CardHeader>
+   577→              <CardContent>
+   578→                <Heatmap data={summary.heatmap} />
+   579→              </CardContent>
+   580→            </Card>
+   581→          )}
+   582→
+   583→          {/* CSV export for paid users */}
+   584→          {(plan === 'pro' || plan === 'business') && (
+   585→            <Card className="border-dashed border-border bg-card">
+   586→              <CardContent className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+   587→                <div>
+   588→                  <p className="font-semibold">Export scan data</p>
+   589→                  <p className="text-sm text-muted-foreground">
+   590→                    Download all scans in this range as a CSV file.
+   591→                  </p>
+   592→                </div>
+   593→                <Button onClick={handleExportCSV} variant="outline">
+   594→                  <Download className="mr-2 h-4 w-4" /> Download CSV
+   595→                </Button>
+   596→              </CardContent>
+   597→            </Card>
+   598→          )}
+   599→
+   600→          {/* Upgrade nudge for Starter users */}
+   601→          {plan === 'starter' && (
+   602→            <Card className="border-brand/30 bg-gradient-to-r from-brand-muted to-transparent">
+   603→              <CardContent className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+   604→                <div className="flex items-start gap-3">
+   605→                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand text-brand-foreground">
+   606→                    <Activity className="h-5 w-5" />
+   607→                  </span>
+   608→                  <div>
+   609→                    <p className="font-semibold">Want deeper insights?</p>
+   610→                    <p className="text-sm text-muted-foreground">
+   611→                      Upgrade to Pro for 1-year analytics, real-time feed, and CSV export.
+   612→                    </p>
+   613→                  </div>
+   614→                </div>
+   615→                <Button onClick={() => navigate('billing')} className="bg-brand text-brand-foreground hover:bg-brand/90">
+   616→                  Upgrade to Pro <ChevronRight className="ml-1 h-4 w-4" />
+   617→                </Button>
+   618→              </CardContent>
+   619→            </Card>
+   620→          )}
+   621→        </>
+   622→      )}
+   623→    </div>
+   624→  )
+   625→}
+   626→
+   627→// ---------- Sub components ----------
+   628→
+   629→function StatCard({
+   630→  label, value, hint, icon: Icon, accent,
+   631→}: { label: string; value: string; hint?: string; icon: typeof Globe; accent?: boolean }) {
+   632→  return (
+   633→    <Card className="border-border">
+   634→      <CardContent className="p-4 sm:p-5">
+   635→        <div className="flex items-start justify-between gap-2">
+   636→          <div className="min-w-0">
+   637→            <p className="text-xs font-medium text-muted-foreground">{label}</p>
+   638→            <p className="mt-1 truncate text-xl font-bold tracking-tight sm:text-2xl">{value}</p>
+   639→            {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+   640→          </div>
+   641→          <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-lg', accent ? 'bg-brand-muted text-brand' : 'bg-muted text-muted-foreground')}>
+   642→            <Icon className="h-4 w-4" />
+   643→          </span>
+   644→        </div>
+   645→      </CardContent>
+   646→    </Card>
+   647→  )
+   648→}
+   649→
+   650→function DonutCard({
+   651→  title, data, icon: Icon,
+   652→}: { title: string; data: { name: string; count: number }[]; icon: typeof Globe }) {
+   653→  const total = data.reduce((s, d) => s + d.count, 0)
+   654→  return (
+   655→    <Card className="border-border">
+   656→      <CardHeader>
+   657→        <div className="flex items-center gap-2">
+   658→          <span className="grid h-7 w-7 place-items-center rounded-lg bg-muted text-muted-foreground">
+   659→            <Icon className="h-3.5 w-3.5" />
+   660→          </span>
+   661→          <CardTitle className="text-base">{title}</CardTitle>
+   662→        </div>
+   663→      </CardHeader>
+   664→      <CardContent>
+   665→        {data.length === 0 || total === 0 ? (
+   666→          <EmptyChart />
+   667→        ) : (
+   668→          <div className="flex flex-col items-center gap-4 sm:flex-row">
+   669→            <div className="h-40 w-40 shrink-0">
+   670→              <ResponsiveContainer width="100%" height="100%">
+   671→                <PieChart>
+   672→                  <Pie
+   673→                    data={data}
+   674→                    dataKey="count"
+   675→                    nameKey="name"
+   676→                    innerRadius={42}
+   677→                    outerRadius={70}
+   678→                    paddingAngle={2}
+   679→                    stroke="var(--card)"
+   680→                  >
+   681→                    {data.map((_, i) => (
+   682→                      <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+   683→                    ))}
+   684→                  </Pie>
+   685→                  <Tooltip
+   686→                    contentStyle={{
+   687→                      background: 'var(--card)', border: '1px solid var(--border)',
+   688→                      borderRadius: 8, color: 'var(--foreground)', fontSize: 12,
+   689→                    }}
+   690→                    formatter={(v: number) => [`${formatNumber(v)} scans`, '']}
+   691→                  />
+   692→                </PieChart>
+   693→              </ResponsiveContainer>
+   694→            </div>
+   695→            <div className="flex-1 space-y-1.5 self-stretch">
+   696→              {data.slice(0, 5).map((d, i) => (
+   697→                <div key={d.name} className="flex items-center justify-between text-xs">
+   698→                  <span className="flex items-center gap-2 truncate">
+   699→                    <span className="h-2.5 w-2.5 rounded-sm" style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+   700→                    <span className="capitalize">{d.name}</span>
+   701→                  </span>
+   702→                  <span className="text-muted-foreground">
+   703→                    {formatNumber(d.count)} · {pct(d.count, total)}%
+   704→                  </span>
+   705→                </div>
+   706→              ))}
+   707→            </div>
+   708→          </div>
+   709→        )}
+   710→      </CardContent>
+   711→    </Card>
+   712→  )
+   713→}
+   714→
+   715→function Heatmap({ data }: { data: number[][] }) {
+   716→  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+   717→  const max = useMemo(() => {
+   718→    let m = 0
+   719→    for (const row of data) for (const v of row) if (v > m) m = v
+   720→    return m || 1
+   721→  }, [data])
+   722→  return (
+   723→    <div className="overflow-x-auto">
+   724→      <div className="min-w-[640px]">
+   725→        <div className="mb-1 flex pl-10">
+   726→          {Array.from({ length: 24 }, (_, h) => (
+   727→            <div key={h} className="flex-1 text-center text-[9px] text-muted-foreground">
+   728→              {h % 3 === 0 ? h : ''}
+   729→            </div>
+   730→          ))}
+   731→        </div>
+   732→        {data.map((row, d) => (
+   733→          <div key={d} className="mb-1 flex items-center">
+   734→            <div className="w-10 shrink-0 text-[10px] font-medium text-muted-foreground">{days[d]}</div>
+   735→            <div className="flex flex-1 gap-0.5">
+   736→              {row.map((v, h) => {
+   737→                const intensity = v / max
+   738→                const bg = v === 0 ? 'var(--muted)' : `oklch(0.541 0.281 293 / ${0.15 + intensity * 0.85})`
+   739→                return (
+   740→                  <div
+   741→                    key={h}
+   742→                    title={`${days[d]} ${String(h).padStart(2, '0')}:00 — ${v} scans`}
+   743→                    className="h-5 flex-1 rounded-sm transition-colors hover:outline hover:outline-1 hover:outline-brand"
+   744→                    style={{ background: bg }}
+   745→                  />
+   746→                )
+   747→              })}
+   748→            </div>
+   749→          </div>
+   750→        ))}
+   751→        <div className="mt-3 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+   752→          Less
+   753→          {[0.1, 0.3, 0.5, 0.75, 1].map((i) => (
+   754→            <span
+   755→              key={i}
+   756→              className="h-3 w-3 rounded-sm"
+   757→              style={{ background: `oklch(0.541 0.281 293 / ${0.15 + i * 0.85})` }}
+   758→            />
+   759→          ))}
+   760→          More
+   761→        </div>
+   762→      </div>
+   763→    </div>
+   764→  )
+   765→}
+   766→
+   767→function EmptyChart({ label = 'No data yet.' }: { label?: string }) {
+   768→  return (
+   769→    <div className="flex h-48 flex-col items-center justify-center gap-2 text-center">
+   770→      <BarChart3 className="h-6 w-6 text-muted-foreground/50" />
+   771→      <p className="text-xs text-muted-foreground">{label}</p>
+   772→    </div>
+   773→  )
+   774→}
+   775→
+   776→// ---------- helpers ----------
+   777→
+   778→function pct(part: number, total: number) {
+   779→  if (!total) return 0
+   780→  return Math.round((part / total) * 100)
+   781→}
+   782→
+   783→function shortDate(d: string) {
+   784→  try {
+   785→    const dt = new Date(d)
+   786→    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+   787→  } catch {
+   788→    return d
+   789→  }
+   790→}
+   791→
+   792→function aggregateOverTime(
+   793→  overTime: { date: string; total: number; unique: number }[],
+   794→  granularity: 'daily' | 'weekly' | 'monthly'
+   795→) {
+   796→  if (!overTime?.length) return []
+   797→  if (granularity === 'daily') return overTime
+   798→  const buckets = new Map<string, { total: number; unique: number }>()
+   799→  for (const p of overTime) {
+   800→    const dt = new Date(p.date)
+   801→    let key = p.date
+   802→    if (granularity === 'weekly') {
+   803→      // Find Sunday of that week
+   804→      const day = dt.getDay()
+   805→      const sunday = new Date(dt)
+   806→      sunday.setDate(dt.getDate() - day)
+   807→      key = sunday.toISOString().slice(0, 10)
+   808→    } else if (granularity === 'monthly') {
+   809→      key = p.date.slice(0, 7) + '-01'
+   810→    }
+   811→    const ex = buckets.get(key) ?? { total: 0, unique: 0 }
+   812→    ex.total += p.total
+   813→    ex.unique += p.unique
+   814→    buckets.set(key, ex)
+   815→  }
+   816→  return [...buckets.entries()]
+   817→    .map(([date, v]) => ({ date, total: v.total, unique: v.unique }))
+   818→    .sort((a, b) => a.date.localeCompare(b.date))
+   819→}
+   820→
+   821→export default AnalyticsView
+   822→

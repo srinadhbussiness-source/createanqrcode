@@ -1,0 +1,252 @@
+/home/z/my-project/src/components/qr-studio.tsx:              <Button variant="ghost" size="icon" className="h-8 w-8"><X className="h-4 w-4" /></Button>
+/home/z/my-project/src/components/qr-studio.tsx:                    variant="ghost"
+/home/z/my-project/src/components/qr-studio.tsx:                    <Button size="icon" variant="ghost" onClick={() => setLogoDataUrl(null)}><X className="h-4 w-4" /></Button>
+/home/z/my-project/src/components/qr-studio.tsx:                <Button onClick={() => handleDownload('png')} disabled={downloading} variant="outline" className="w-full"><Download className="h-4 w-4" /> PNG ({design.outputSize}px)</Button>
+/home/z/my-project/src/components/qr-studio.tsx:                <Button onClick={() => handleDownload('svg')} disabled={downloading} variant="outline" className="w-full"><Download className="h-4 w-4" /> SVG (Vector)</Button>
+/home/z/my-project/src/components/qr-studio.tsx:        <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => fileRef.current?.click()} className="h-9 px-2">
+/home/z/my-project/src/components/scan-preview.tsx:      <Button variant="outline" size="sm" onClick={handleRescan} disabled={scanning} className="btn-press">
+/home/z/my-project/src/components/views/settings.tsx:                    variant="outline"
+/home/z/my-project/src/components/views/settings.tsx:                      variant="outline"
+/home/z/my-project/src/components/views/settings.tsx:                  <Badge variant="outline" className="capitalize border-brand/40 text-brand">{plan}</Badge>
+/home/z/my-project/src/components/views/settings.tsx:                  <Button variant="ghost" size="sm" onClick={() => navigate('billing')}>
+/home/z/my-project/src/components/views/settings.tsx:                  <Button variant="outline" onClick={() => setPwDialogOpen(true)}>
+/home/z/my-project/src/components/views/settings.tsx:                <Button variant="ghost" size="sm" onClick={() => setSignOutAllOpen(true)}>
+/home/z/my-project/src/components/views/settings.tsx:                            <Badge variant="secondary" className="ml-2 bg-brand-muted text-brand text-[10px]">Current</Badge>
+/home/z/my-project/src/components/views/settings.tsx:                          variant="ghost"
+/home/z/my-project/src/components/views/settings.tsx:                <Button onClick={exportData} disabled={exporting} variant="outline">
+/home/z/my-project/src/components/views/settings.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/settings.tsx:            <Button variant="outline" onClick={() => { setPwDialogOpen(false); setCurPw(''); setNewPw(''); setConfirmPw('') }}>
+/home/z/my-project/src/components/views/settings.tsx:            <Badge variant="secondary" className="bg-brand-muted text-brand text-[10px] gap-1">
+/home/z/my-project/src/components/views/changelog.tsx:        <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Changelog</Badge>
+/home/z/my-project/src/components/views/changelog.tsx:                <Badge variant="outline" className={TYPE_STYLES[e.type]}>{e.type}</Badge>
+/home/z/my-project/src/components/views/pricing.tsx:        <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Pricing</Badge>
+/home/z/my-project/src/components/views/pricing.tsx:                <Badge variant="outline" className="absolute -top-3 left-1/2 -translate-x-1/2 border-brand/40 bg-background text-brand">
+/home/z/my-project/src/components/views/pricing.tsx:                  variant={p.popular || p.best ? 'default' : 'outline'}
+/home/z/my-project/src/components/views/pricing.tsx:          <Badge variant="outline" className="mb-3 border-brand/30 text-brand">How we compare</Badge>
+/home/z/my-project/src/components/views/pricing.tsx:          <Button variant="outline" onClick={() => navigate('help')}>Talk to support</Button>
+/home/z/my-project/src/components/views/bulk.tsx:        <Badge variant="outline" className="gap-1 border-brand/40 text-brand">
+/home/z/my-project/src/components/views/bulk.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/bulk.tsx:              <Button variant="outline" size="sm" onClick={() => downloadSampleCsv('url')}>
+/home/z/my-project/src/components/views/bulk.tsx:              <Button variant="outline" size="sm" onClick={() => downloadSampleCsv('wifi')}>
+/home/z/my-project/src/components/views/bulk.tsx:              <Button variant="outline" size="sm" onClick={() => downloadSampleCsv('upi')}>
+/home/z/my-project/src/components/views/bulk.tsx:                <Button variant="outline" onClick={() => setStep(1)}>
+/home/z/my-project/src/components/views/bulk.tsx:                  <Button variant="outline" onClick={() => setStep(2)}>
+/home/z/my-project/src/components/views/bulk.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/bulk.tsx:                    <Badge variant="secondary" className="ml-2">{result.errors.length}</Badge>
+/home/z/my-project/src/components/views/bulk.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/bulk.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/bulk.tsx:              variant="outline"
+/home/z/my-project/src/components/views/bulk.tsx:                variant="ghost"
+/home/z/my-project/src/app/globals.css:@custom-variant dark (&:is(.dark *));
+/home/z/my-project/src/components/views/qr-detail.tsx:          <Button variant="ghost" size="icon" onClick={() => navigate('qr-codes')}>
+/home/z/my-project/src/components/views/qr-detail.tsx:              <Badge variant="secondary" className="gap-1 text-[10px]">
+/home/z/my-project/src/components/views/qr-detail.tsx:                <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">Dynamic</Badge>
+/home/z/my-project/src/components/views/qr-detail.tsx:              <Button onClick={() => handleDownload('svg')} variant="outline" className="flex-1">
+/home/z/my-project/src/components/views/qr-detail.tsx:                <Button variant="ghost" size="sm" onClick={() => setFolderDialogOpen(true)}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={copyShort}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button asChild variant="outline" size="icon" className="h-8 w-8">
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button variant="ghost" size="sm" onClick={() => { setDestValue(code.destinationUrl ?? ''); setEditingDest((v) => !v) }}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button variant="outline" size="sm" onClick={toggleStatus} disabled={patchMut.isPending}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button variant="ghost" size="sm" onClick={() => { setPwValue(''); setEditingPw((v) => !v) }}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button variant="ghost" size="sm" onClick={() => { setExpiryValue(code.expiresAt ? code.expiresAt.slice(0, 16) : ''); setEditingExpiry((v) => !v) }}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button variant="ghost" size="sm" onClick={() => { setMaxValue(code.maxScans?.toString() ?? ''); setEditingMax((v) => !v) }}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/qr-detail.tsx:                  {plan === 'free' && <Badge variant="secondary" className="text-[10px]">Pro+</Badge>}
+/home/z/my-project/src/components/views/qr-detail.tsx:                        <Badge variant="outline" className="shrink-0 capitalize border-brand/40 text-brand text-[10px]">{r.type}</Badge>
+/home/z/my-project/src/components/views/qr-detail.tsx:                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={() => removeRule(r.id)}>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button size="sm" variant="outline" className="mt-2" onClick={() => navigate('pricing')}>Upgrade to Pro</Button>
+/home/z/my-project/src/components/views/qr-detail.tsx:                    <Button size="sm" variant="outline" className="w-full" onClick={addRule} disabled={patchMut.isPending}>
+/home/z/my-project/src/components/views/qr-detail.tsx:              <Button variant="outline" size="sm" onClick={handleExportCSV}>
+/home/z/my-project/src/components/views/qr-detail.tsx:              <Button variant="ghost" size="sm" onClick={() => navigate('analytics')} className="text-brand">
+/home/z/my-project/src/components/views/qr-detail.tsx:                    variant="outline"
+/home/z/my-project/src/components/views/qr-detail.tsx:    <Badge variant="outline" className={cn('text-[10px] font-medium', cfg.className)}>
+/home/z/my-project/src/components/views/docs.tsx:        <Badge variant="outline" className="mb-3 border-brand/30 text-brand">API Reference</Badge>
+/home/z/my-project/src/components/views/about.tsx:          <Badge variant="outline" className="mb-4 border-brand/30 text-brand">Our story</Badge>
+/home/z/my-project/src/components/views/about.tsx:            <Button variant="outline" onClick={() => navigate('pricing')}>See pricing</Button>
+/home/z/my-project/src/components/views/about.tsx:          <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Three promises</Badge>
+/home/z/my-project/src/components/views/about.tsx:          <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Who it's for</Badge>
+/home/z/my-project/src/components/views/about.tsx:          <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Values</Badge>
+/home/z/my-project/src/components/views/about.tsx:          <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Team</Badge>
+/home/z/my-project/src/components/views/about.tsx:          <Button variant="outline" onClick={() => navigate('create')}>Just make a QR code</Button>
+/home/z/my-project/src/components/views/types-ref.tsx:        <Badge variant="outline" className="mb-3 border-brand/30 text-brand">{QR_TYPES.length} QR types</Badge>
+/home/z/my-project/src/components/views/types-ref.tsx:                <Badge variant="secondary" className="ml-1">{types.length}</Badge>
+/home/z/my-project/src/components/views/types-ref.tsx:          {t.popular && <Badge variant="secondary" className="text-[10px]">Popular</Badge>}
+/home/z/my-project/src/components/views/templates.tsx:        <Button onClick={() => setSaveOpen(true)} variant="outline">
+/home/z/my-project/src/components/views/templates.tsx:                    <Badge variant="secondary" className="text-[10px]">
+/home/z/my-project/src/components/views/templates.tsx:            <Button variant="outline" onClick={() => setSaveOpen(false)}>Cancel</Button>
+/home/z/my-project/src/components/views/verify-email.tsx:                variant="outline"
+/home/z/my-project/src/components/views/verify-email.tsx:              <Button variant="ghost" size="sm" className="w-full text-xs" onClick={() => navigate('dashboard')}>
+/home/z/my-project/src/components/views/verify-email.tsx:                variant="outline"
+/home/z/my-project/src/components/views/verify-email.tsx:                variant="ghost"
+/home/z/my-project/src/components/views/qr-codes.tsx:                <Button variant="ghost" size="sm" onClick={() => { setSearch(''); setTypeFilter('all'); setStatusFilter('all'); setFrom(''); setTo('') }}>
+/home/z/my-project/src/components/views/qr-codes.tsx:                  variant={view === 'grid' ? 'default' : 'ghost'}
+/home/z/my-project/src/components/views/qr-codes.tsx:                  variant={view === 'list' ? 'default' : 'ghost'}
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="ghost" size="sm" onClick={selectAll} className="text-xs">
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="outline" size="sm" onClick={() => setMoveDialogOpen(true)}>
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="outline" size="sm" onClick={() => setTagDialogOpen(true)}>
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="outline" size="sm" onClick={() => bulkMutation.mutate({ action: 'archive' })}>
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="outline" size="sm" onClick={() => bulkMutation.mutate({ action: 'trash' })}
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="ghost" size="sm" onClick={clearSelection}>
+/home/z/my-project/src/components/views/qr-codes.tsx:            <Button variant="outline" onClick={() => setTagDialogOpen(false)}>Cancel</Button>
+/home/z/my-project/src/components/views/qr-codes.tsx:    <Badge variant="outline" className={cn('text-[10px]', cfg.className)}>
+/home/z/my-project/src/components/views/qr-codes.tsx:            <Badge variant="secondary" className="gap-1 text-[10px]">
+/home/z/my-project/src/components/views/qr-codes.tsx:              <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">Dyn</Badge>
+/home/z/my-project/src/components/views/qr-codes.tsx:              <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+/home/z/my-project/src/components/views/qr-codes.tsx:              <DropdownMenuItem onClick={onTrash} variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Move to Trash</DropdownMenuItem>
+/home/z/my-project/src/components/views/qr-codes.tsx:            <Badge variant="secondary" className="gap-1 text-[10px]">
+/home/z/my-project/src/components/views/qr-codes.tsx:              <Badge variant="outline" className="border-brand/40 text-[10px] text-brand">Dyn</Badge>
+/home/z/my-project/src/components/views/qr-codes.tsx:          <Button variant="ghost" size="icon" className="h-8 w-8">
+/home/z/my-project/src/components/views/qr-codes.tsx:          <DropdownMenuItem onClick={onTrash} variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Move to Trash</DropdownMenuItem>
+/home/z/my-project/src/components/views/type-page.tsx:          <Badge variant="outline" className="border-brand/30 text-brand">{cat?.label}</Badge>
+/home/z/my-project/src/components/views/type-page.tsx:          {def.popular && <Badge variant="secondary">Popular</Badge>}
+/home/z/my-project/src/components/views/type-page.tsx:                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => handleDownload('png')} disabled={downloading}><Download className="h-3 w-3" /> PNG</Button>
+/home/z/my-project/src/components/views/type-page.tsx:                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => handleDownload('svg')} disabled={downloading}><Download className="h-3 w-3" /> SVG</Button>
+/home/z/my-project/src/components/views/type-page.tsx:                <Button onClick={() => handleDownload('png')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> PNG</Button>
+/home/z/my-project/src/components/views/type-page.tsx:                <Button onClick={() => handleDownload('svg')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> SVG</Button>
+/home/z/my-project/src/components/views/type-page.tsx:              <Button variant="outline" className="mt-4 w-full" onClick={() => navigate('types')}>
+/home/z/my-project/src/components/views/type-page.tsx:          <Button onClick={() => onDownload('png')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> PNG</Button>
+/home/z/my-project/src/components/views/type-page.tsx:          <Button onClick={() => onDownload('svg')} disabled={downloading} variant="outline" className="flex-1"><Download className="h-4 w-4" /> SVG</Button>
+/home/z/my-project/src/components/views/type-page.tsx:                <Button size="icon" variant="ghost" onClick={onLogoRemove}><X className="h-4 w-4" /></Button>
+/home/z/my-project/src/components/ui/calendar.tsx:import { Button, buttonVariants } from "@/components/ui/button"
+/home/z/my-project/src/components/ui/calendar.tsx:  buttonVariant = "ghost",
+/home/z/my-project/src/components/ui/calendar.tsx:  buttonVariant?: React.ComponentProps<typeof Button>["variant"]
+/home/z/my-project/src/components/ui/calendar.tsx:          buttonVariants({ variant: buttonVariant }),
+/home/z/my-project/src/components/ui/calendar.tsx:          buttonVariants({ variant: buttonVariant }),
+/home/z/my-project/src/components/ui/calendar.tsx:      variant="ghost"
+/home/z/my-project/src/components/views/login.tsx:              variant="outline"
+/home/z/my-project/src/components/views/signup.tsx:              variant="outline"
+/home/z/my-project/src/components/views/billing.tsx:              <Badge variant="outline" className="gap-1 border-brand/40 text-brand">
+/home/z/my-project/src/components/views/billing.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/billing.tsx:                        <Badge variant="secondary" className="bg-brand-muted text-brand">Current</Badge>
+/home/z/my-project/src/components/views/billing.tsx:                        <Badge variant="outline" className="capitalize border-brand/40 text-brand">
+/home/z/my-project/src/components/views/billing.tsx:                        <Badge variant="secondary" className={cn(
+/home/z/my-project/src/components/views/billing.tsx:                          variant="ghost"
+/home/z/my-project/src/components/views/billing.tsx:              variant="outline"
+/home/z/my-project/src/components/views/billing.tsx:          <Button variant="ghost" size="sm" className="shrink-0" onClick={() => navigate('help')}>
+/home/z/my-project/src/components/ui/alert.tsx:import { cva, type VariantProps } from "class-variance-authority"
+/home/z/my-project/src/components/ui/alert.tsx:const alertVariants = cva(
+/home/z/my-project/src/components/ui/alert.tsx:    variants: {
+/home/z/my-project/src/components/ui/alert.tsx:      variant: {
+/home/z/my-project/src/components/ui/alert.tsx:    defaultVariants: {
+/home/z/my-project/src/components/ui/alert.tsx:      variant: "default",
+/home/z/my-project/src/components/ui/alert.tsx:  variant,
+/home/z/my-project/src/components/ui/alert.tsx:}: React.ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
+/home/z/my-project/src/components/ui/alert.tsx:      className={cn(alertVariants({ variant }), className)}
+/home/z/my-project/src/components/views/folders.tsx:                      <Button size="sm" variant="outline" onClick={() => setEditingId(null)}>
+/home/z/my-project/src/components/views/folders.tsx:                        variant="ghost"
+/home/z/my-project/src/components/views/folders.tsx:                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => startEdit(f)}>
+/home/z/my-project/src/components/views/folders.tsx:                          variant="ghost"
+/home/z/my-project/src/components/views/folders.tsx:            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+/home/z/my-project/src/components/views/home.tsx:              <Button size="lg" variant="outline" className="w-full sm:w-auto" onClick={() => navigate('types')}>
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Features</Badge>
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">How it works</Badge>
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">83 QR types · 11 categories</Badge>
+/home/z/my-project/src/components/views/home.tsx:            <Button variant="outline" onClick={() => navigate('types')}>
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Loved by creators</Badge>
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Pricing</Badge>
+/home/z/my-project/src/components/views/home.tsx:                    variant={p.popular ? 'default' : 'outline'}
+/home/z/my-project/src/components/views/home.tsx:            <Button variant="link" onClick={() => navigate('pricing')} className="text-brand">
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Security & Trust</Badge>
+/home/z/my-project/src/components/views/home.tsx:            <Badge variant="outline" className="mb-3 border-brand/30 text-brand">FAQ</Badge>
+/home/z/my-project/src/components/views/home.tsx:            <Button size="lg" variant="outline" className="w-full border-current/30 bg-transparent text-current hover:bg-current/10 sm:w-auto" onClick={() => navigate('signup')}>
+/home/z/my-project/src/components/ui/carousel.tsx:  variant = "outline",
+/home/z/my-project/src/components/ui/carousel.tsx:      variant={variant}
+/home/z/my-project/src/components/ui/carousel.tsx:  variant = "outline",
+/home/z/my-project/src/components/ui/carousel.tsx:      variant={variant}
+/home/z/my-project/src/components/views/blog.tsx:        <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Blog</Badge>
+/home/z/my-project/src/components/views/blog.tsx:                <Badge variant="secondary">Featured</Badge>
+/home/z/my-project/src/components/views/blog.tsx:                <Badge variant="outline" className="border-brand/30 text-brand text-[10px]">{p.category}</Badge>
+/home/z/my-project/src/components/views/analytics.tsx:          <Badge variant="outline" className="gap-1 border-brand/40 text-brand">
+/home/z/my-project/src/components/views/analytics.tsx:            <Button variant="outline" size="sm" onClick={handleExportCSV}>
+/home/z/my-project/src/components/views/analytics.tsx:                              <Badge variant="secondary" className="text-[10px] capitalize">{q.qrType}</Badge>
+/home/z/my-project/src/components/views/analytics.tsx:                <Button onClick={handleExportCSV} variant="outline">
+/home/z/my-project/src/components/views/api-keys.tsx:          <Badge variant="outline" className="border-brand/40 text-brand">
+/home/z/my-project/src/components/views/api-keys.tsx:                            <Badge variant="secondary" className="bg-brand-muted text-brand">Read + Write</Badge>
+/home/z/my-project/src/components/views/api-keys.tsx:                            <Badge variant="secondary">Read only</Badge>
+/home/z/my-project/src/components/views/api-keys.tsx:                            variant="ghost"
+/home/z/my-project/src/components/views/api-keys.tsx:                        <Badge variant="secondary" className="bg-brand-muted text-brand shrink-0">R+W</Badge>
+/home/z/my-project/src/components/views/api-keys.tsx:                        <Badge variant="secondary" className="shrink-0">Read</Badge>
+/home/z/my-project/src/components/views/api-keys.tsx:                      variant="ghost"
+/home/z/my-project/src/components/views/api-keys.tsx:          <Button variant="outline" onClick={() => navigate('docs')}>
+/home/z/my-project/src/components/views/api-keys.tsx:            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+/home/z/my-project/src/components/views/api-keys.tsx:              variant={copied ? 'outline' : 'default'}
+/home/z/my-project/src/components/views/api-keys.tsx:        <Button variant="outline" onClick={onDocs}>
+/home/z/my-project/src/components/views/help.tsx:  { icon: BarChart3, title: 'Analytics', body: 'Reading scan data, exports, A/B testing destinations.', count: 7, keywords: 'analytics scans statistics export chart' },
+/home/z/my-project/src/components/views/help.tsx:        <Badge variant="outline" className="mb-3 border-brand/30 text-brand">Help Center</Badge>
+/home/z/my-project/src/components/views/help.tsx:                  <Badge variant="secondary">{c.count}</Badge>
+/home/z/my-project/src/components/views/help.tsx:              <Button variant="ghost" size="sm" onClick={() => { setActiveCat(null); setQuery('') }}>
+/home/z/my-project/src/components/views/help.tsx:                  <Button type="button" variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
+/home/z/my-project/src/components/views/help.tsx:              <Button variant="link" className="mt-3 h-auto p-0 text-brand" onClick={() => navigate('pricing')}>
+/home/z/my-project/src/components/views/dashboard.tsx:          {total > 0 && <Button variant="ghost" size="sm" onClick={() => navigate('qr-codes')} className="text-brand">View all <ArrowRight className="ml-1 h-3.5 w-3.5" /></Button>}
+/home/z/my-project/src/components/views/dashboard.tsx:            <div className="flex items-center gap-1.5"><Badge variant="secondary" className="gap-1 text-[10px]"><Icon className="h-2.5 w-2.5" />{typeDef?.label ?? code.qrType}</Badge>{code.isDynamic && <Badge variant="outline" className="text-[10px]">Dynamic</Badge>}</div>
+/home/z/my-project/src/components/ui/sidebar.tsx:import { cva, VariantProps } from "class-variance-authority"
+/home/z/my-project/src/components/ui/sidebar.tsx:            "group/sidebar-wrapper has-data-[variant=inset]:bg-sidebar flex min-h-svh w-full",
+/home/z/my-project/src/components/ui/sidebar.tsx:  variant = "sidebar",
+/home/z/my-project/src/components/ui/sidebar.tsx:  variant?: "sidebar" | "floating" | "inset"
+/home/z/my-project/src/components/ui/sidebar.tsx:      data-variant={variant}
+/home/z/my-project/src/components/ui/sidebar.tsx:          variant === "floating" || variant === "inset"
+/home/z/my-project/src/components/ui/sidebar.tsx:          // Adjust the padding for floating and inset variants.
+/home/z/my-project/src/components/ui/sidebar.tsx:          variant === "floating" || variant === "inset"
+/home/z/my-project/src/components/ui/sidebar.tsx:          className="bg-sidebar group-data-[variant=floating]:border-sidebar-border flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:shadow-sm"
+/home/z/my-project/src/components/ui/sidebar.tsx:      variant="ghost"
+/home/z/my-project/src/components/ui/sidebar.tsx:        "md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2",
+/home/z/my-project/src/components/ui/sidebar.tsx:const sidebarMenuButtonVariants = cva(
+/home/z/my-project/src/components/ui/sidebar.tsx:    variants: {
+/home/z/my-project/src/components/ui/sidebar.tsx:      variant: {
+/home/z/my-project/src/components/ui/sidebar.tsx:    defaultVariants: {
+/home/z/my-project/src/components/ui/sidebar.tsx:      variant: "default",
+/home/z/my-project/src/components/ui/sidebar.tsx:  variant = "default",
+/home/z/my-project/src/components/ui/sidebar.tsx:} & VariantProps<typeof sidebarMenuButtonVariants>) {
+/home/z/my-project/src/components/ui/sidebar.tsx:      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+/home/z/my-project/src/components/views/create.tsx:            <Button variant="outline" size="sm" onClick={() => setAllTypesOpen(true)}>
+/home/z/my-project/src/components/views/create.tsx:              <Button onClick={() => handleDownload('png')} disabled={downloading} variant="outline" className="flex-1">
+/home/z/my-project/src/components/views/create.tsx:              <Button onClick={() => handleDownload('svg')} disabled={downloading} variant="outline" className="flex-1">
+/home/z/my-project/src/components/views/create.tsx:              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setAllTypesOpen(false)}>
+/home/z/my-project/src/components/marketing/navbar.tsx:              <Button onClick={() => go('login')} variant="ghost" size="sm" className="hidden sm:inline-flex">
+/home/z/my-project/src/components/marketing/navbar.tsx:              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu">
+/home/z/my-project/src/components/marketing/navbar.tsx:                  <Button variant="ghost" size="icon" aria-label="Close menu"><X className="h-4 w-4" /></Button>
+/home/z/my-project/src/components/marketing/navbar.tsx:                    <Button onClick={() => go(l.view)} variant="ghost" className="justify-start">
+/home/z/my-project/src/components/marketing/navbar.tsx:                      <Button onClick={() => go('login')} variant="outline">Log in</Button>
+/home/z/my-project/src/components/views/reset-password.tsx:                  variant="outline"
+/home/z/my-project/src/components/views/reset-password.tsx:                  variant="ghost"
+/home/z/my-project/src/components/theme-toggle.tsx:        <Button variant="ghost" size="icon" aria-label="Toggle theme" className="text-foreground">
+/home/z/my-project/src/components/dashboard/shell.tsx:                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-medium text-muted-foreground">
+/home/z/my-project/src/components/dashboard/shell.tsx:            <Button variant="ghost" size="icon" className="absolute right-3 top-3"><X className="h-4 w-4" /></Button>
+/home/z/my-project/src/components/dashboard/shell.tsx:            <Button variant="ghost" size="icon" className="lg:hidden" onClick={() => setMobileOpen(true)}>
+/home/z/my-project/src/components/dashboard/shell.tsx:              variant="ghost"
+/home/z/my-project/src/components/dashboard/shell.tsx:              variant="ghost"
+/home/z/my-project/src/components/dashboard/shell.tsx:            <Badge variant="outline" className="hidden sm:inline-flex font-medium text-muted-foreground">
+/home/z/my-project/src/components/dashboard/shell.tsx:                <Button variant="ghost" className="gap-2 px-2">
+/home/z/my-project/src/components/admin/shell.tsx:          <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground" onClick={() => navigate('dashboard')}>
+/home/z/my-project/src/components/admin/shell.tsx:          <Button variant="ghost" size="sm" className="mt-1 w-full justify-start text-muted-foreground" onClick={handleLogout}>
+/home/z/my-project/src/components/admin/audit.tsx:                        <Badge variant="secondary" className={`text-[10px] ${ACTION_COLORS[l.action] ?? ''}`}>{l.action}</Badge>
+/home/z/my-project/src/components/admin/audit.tsx:            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
+/home/z/my-project/src/components/admin/audit.tsx:            <Button variant="outline" size="sm" disabled={page >= data.pagination.total_pages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+/home/z/my-project/src/components/ui/alert-dialog.tsx:import { buttonVariants } from "@/components/ui/button"
+/home/z/my-project/src/components/ui/alert-dialog.tsx:      className={cn(buttonVariants(), className)}
+/home/z/my-project/src/components/ui/alert-dialog.tsx:      className={cn(buttonVariants({ variant: "outline" }), className)}
+/home/z/my-project/src/components/admin/users.tsx:                        <Badge variant={u.role === 'user' ? 'secondary' : 'outline'} className="text-[10px]">
+/home/z/my-project/src/components/admin/users.tsx:                          <Badge variant="secondary" className="bg-destructive/10 text-destructive text-[10px]">Suspended</Badge>
+/home/z/my-project/src/components/admin/users.tsx:                          <Badge variant="secondary" className="text-[10px]">Active</Badge>
+/home/z/my-project/src/components/admin/users.tsx:                          <Badge variant="secondary" className="text-[10px] text-muted-foreground">Unverified</Badge>
+/home/z/my-project/src/components/admin/users.tsx:                          variant="ghost"
+/home/z/my-project/src/components/admin/users.tsx:            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
+/home/z/my-project/src/components/admin/users.tsx:            <Button variant="outline" size="sm" disabled={page >= data.pagination.total_pages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+/home/z/my-project/src/components/admin/qr-codes.tsx:            <Button key={s} variant={status === s ? 'default' : 'outline'} size="sm" onClick={() => { setStatus(s); setPage(1) }}>
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          <Badge variant="secondary" className="text-[10px]">{c.qrType}</Badge>
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          {c.isDynamic && <Badge variant="outline" className="text-[10px]">Dynamic</Badge>}
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          {c.trashed && <Badge variant="secondary" className="bg-destructive/10 text-destructive text-[10px]">Trashed</Badge>}
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          {c.passwordProtected && <Badge variant="outline" className="text-[10px]"><Lock className="mr-0.5 h-2.5 w-2.5" />PW</Badge>}
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          {c.status === 'paused' && <Badge variant="secondary" className="text-[10px]">Paused</Badge>}
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          {c.status === 'archived' && <Badge variant="secondary" className="text-[10px]">Archived</Badge>}
+/home/z/my-project/src/components/admin/qr-codes.tsx:                          variant="ghost"
+/home/z/my-project/src/components/admin/qr-codes.tsx:            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Prev</Button>
+/home/z/my-project/src/components/admin/qr-codes.tsx:            <Button variant="outline" size="sm" disabled={page >= data.pagination.total_pages} onClick={() => setPage((p) => p + 1)}>Next</Button>
+/home/z/my-project/src/components/ui/menubar.tsx:  variant = "default",
+/home/z/my-project/src/components/ui/menubar.tsx:  variant?: "default" | "destructive"
+/home/z/my-project/src/components/ui/menubar.tsx:      data-variant={variant}
+/home/z/my-project/src/components/ui/menubar.tsx:        "focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 dark:data-[variant=destructive]:focus:bg-destructive/20 data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive [&_svg:not([class*='text-'])]:text-muted-foreground relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+/home/z/my-project/src/components/admin/health.tsx:                  <Badge variant="secondary" className="bg-foreground/5 text-foreground text-[10px]">
+/home/z/my-project/src/components/admin/payments.tsx:                      <TableCell><Badge variant="secondary" className="text-[10px]">{p.plan}</Badge></TableCell>
+
+[Showing results with pagination = limit: 250]

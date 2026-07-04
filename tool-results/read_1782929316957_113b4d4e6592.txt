@@ -1,0 +1,590 @@
+     1→# CreateAnQRCode — Worklog
+     2→
+     3→Project: Build a complete QR code generator SaaS platform ("CreateAnQRCode") as a single-route Next.js 16 SPA with state-based view routing.
+     4→
+     5→Source spec: /home/z/my-project/upload/Pasted Content_1782909110884.txt (2,439 lines, 23 chapters).
+     6→
+     7→Architecture decisions:
+     8→- Single `/` route (user-visible). All "pages" are Zustand-driven views.
+     9→- Prisma + SQLite for persistence (User, QrCode, Folder, Scan, Template, ApiKey, Session, Payment).
+    10→- API routes under `/api/*` for backend CRUD + mock auth.
+    11→- QR generation client-side via `qr-code-styling` (custom dots/eyes/gradient) + `qrcode` (SVG/PNG export).
+    12→- Charts via `recharts`. Bulk via `papaparse` + `jszip`.
+    13→- Brand color: violet (#7C3AED light / #8B5CF6 dark). No indigo/blue.
+    14→- Dark mode via `next-themes`. Sticky footer. Mobile-first responsive.
+    15→
+    16→---
+    17→Task ID: 1
+    18→Agent: main (orchestrator)
+    19→Task: Foundation setup — packages, prisma schema, globals.css, theme provider, zustand stores, base layout
+    20→
+    21→Work Log:
+    22→- Installed packages: qr-code-styling, qrcode, jszip, papaparse (+ types)
+    23→- Wrote prisma schema with User, Session, QrCode, Folder, Scan, Template, ApiKey, Payment models
+    24→- Ran `bun run db:push` — schema synced to SQLite
+    25→- (next) Write globals.css with violet brand palette + dark mode tokens
+    26→- (next) Write theme provider, zustand stores (auth, ui/router, qr-design, library)
+    27→- (next) Write base app shell + view router in page.tsx
+    28→
+    29→Stage Summary:
+    30→- DB schema finalized. Ready for foundation UI + stores.
+    31→
+    32→---
+    33→Task ID: 2
+    34→Agent: frontend-styling-expert
+    35→Task: Build marketing site + QR generator views (home, create, pricing, types-ref, docs, about, help)
+    36→
+    37→Work Log:
+    38→- Read worklog.md, stores.ts, qr-types.ts, types.ts, qr-preview.tsx, qr-generate.ts, api.ts, format.ts, app-shell.tsx, navbar.tsx, globals.css, relevant ui/* shadcn primitives.
+    39→- Overwrote 7 view stubs in src/components/views/ with full implementations:
+    40→  1. home.tsx — HomeView: 9 sections (Hero with hero-mesh + floating QR mockup, live generator w/ PNG+SVG download, 5-stat social proof bar, 6 feature cards, 20+ QR type pills + coming soon, 3-step "How it works", 3 testimonials, 3-card pricing preview, dark zinc-950 final CTA). All CTAs wired to useRouterStore.navigate. Live preview uses QrPreview with violet-pink linear gradient design.
+    41→  2. create.tsx — CreateView: 3-panel desktop layout (260px type list / form / 320px customizer) collapsing to stacked on mobile. Left: scrollable 20-type list (sticky, max-h-[70vh] scroll-thin) + mobile horizontal scroll row. Center: dynamic FieldRenderer covering all 10 field types (text/url/tel/email/password/number/date/datetime-local/textarea/select/checkbox) with showIf support, title field, Dynamic toggle (destination URL + password + expiry + max scans advanced settings), Generate button, payload preview, PNG/SVG download, soft signup prompt when logged out. Right: 7 collapsible CustomSections (Colors with presets/hex/native picker + transparent checkbox, Dot Style 6 tiles, Eye Style 3, Error Correction L/M/Q/H, Output Size, Gradient none/linear/radial + angle slider, Logo upload + size/padding sliders). Auto-syncs preview via QrPreview props. Save button POSTs to /api/qr-codes with full QrCodeRecord shape. Accepts quickCreateType from useUIStore and params.template from router (applies preset design).
+    42→  3. pricing.tsx — PricingView: 4 plan cards (Free ₹0/$0, Starter ₹399/$7, Pro ₹899/$15 ★Popular, Business ₹1,999/$35). Monthly/Yearly tabs (yearly = 10 months = 2 months free). INR/USD toggle via pressed Toggle buttons. Full feature comparison table (11 rows × 4 plans). 6-question FAQ accordion. 3 trust badges (refund, instant, cancel). Upgrade CTA: if logged in → POST /api/billing/upgrade { plan, currency } → updatePlan + toast + navigate dashboard; if logged out → navigate signup with redirect.
+    43→  4. types-ref.tsx — TypesView: All/Phase1/Phase2 tabs + search filter. Grid of all 20 QR_TYPES cards with icon, label, description, use case, payload example (rendered from buildPayload with sample data), "Create this type" button → setQuickCreateType + navigate create. Coming Soon section with COMING_SOON_TYPES as dashed pills. Empty state for no-match searches.
+    44→  5. docs.tsx — DocsView: Sidebar TOC (Authentication, Rate Limits, Endpoints, Design Object, Error Codes) + sticky "Get API Key" CTA card → navigate api-keys. Main content: 5 sections with copy-enabled CodeBlocks (zinc-950 bg) for cURL examples + JSON responses. Endpoints section covers list/create/update/delete. Design object fully documented. Error codes table with status/code/meaning. Uses native <pre><code> blocks (no react-syntax-highlighter dependency needed for static content).
+    45→  6. about.tsx — AboutView: Hero with hero-mesh, 3 promises (Free forever, No watermark, Privacy first), 6 audience cards (small businesses, freelancers, marketing teams, developers, event organizers, educators), 4 values with icons, 4-person team grid with initial avatars, "By the numbers" dark section with 4 stats, final CTA.
+    46→  7. help.tsx — HelpView: Hero search bar (visual), 6 category cards with article counts, 15-question FAQ accordion, contact support form (Subject + Category Select + Description Textarea + visual Attach button + toast on submit), response times table by plan (Free/Starter/Pro/Business → channel + SLA), bottom support CTA.
+    47→- Design compliance: all views use semantic Tailwind tokens (bg-background, text-foreground, bg-card, border-border, text-muted-foreground) — no hardcoded bg-white/text-black. Brand violet via bg-brand/text-brand/border-brand/bg-brand-muted throughout — NO indigo/blue. QR previews wrapped in bg-white rounded-xl p-4 per spec (white-on-black always). Mobile-first responsive (375/768/1280 breakpoints via sm:/lg:). Rounded-2xl cards, hover transitions, fade-in-up animations. No footer added (shell handles it). All views 'use client' + named + default export.
+    48→- Lint fixes: (1) types-ref.tsx — moved JSX out of try/catch into separate early return (react-hooks/error-boundaries rule). (2) create.tsx — removed stale eslint-disable-next-line by adding [params.template] dep array. (3) Pre-existing theme-toggle.tsx — added eslint-disable-next-line for canonical next-themes mounted pattern.
+    49→- Verification: `bun run lint` → 0 errors, 0 warnings. Dev server restarted on port 3000 → HTTP 200 on `/` (render 64ms). dev.log shows no errors/warnings. Home page HTML contains "actually get scanned" headline, "CreateAnQRCode" branding, and live generator section.
+    50→
+    51→Stage Summary:
+    52→- All 7 marketing + QR generator views shipped and verified. Foundation views are feature-complete per spec Chapters 1–4, 15, 22–23. Ready for dashboard views (qr-codes, qr-detail, folders, templates, bulk, analytics, api-keys, billing, settings, dashboard) and remaining auth views to be built next.
+    53→
+    54→---
+    55→Task ID: 3
+    56→Agent: dashboard-auth-builder
+    57→Task: Build auth flows (login, signup, reset-password, update-password, verify-email) + dashboard views (dashboard, qr-codes, qr-detail, folders, templates) per spec Chapters 5–13
+    58→
+    59→Work Log:
+    60→- Read worklog.md (Tasks 1+2), stores.ts, types.ts, api.ts, qr-preview.tsx, qr-types.ts, qr-generate.ts, format.ts, dashboard/shell.tsx, app-shell.tsx, globals.css, existing API routes (auth/login, auth/google, auth/reset-request, auth/reset-confirm, qr-codes, qr-codes/[id], qr-codes/bulk, qr-codes/[id]/scans, qr-codes/[id]/duplicate, folders, folders/[id], templates, seed), prisma schema, package.json, and existing view stubs.
+    61→- **Gap found**: `POST /api/auth/signup` route was referenced by the spec but did not exist. Created `src/app/api/auth/signup/route.ts` with zod validation (8+ chars, uppercase, number), duplicate-email check (409), password hashing via `hashPassword`, verifyToken + 24h expiry, session creation + cookie. Returns full UserRecord with 201. Verified end-to-end: signup → 201, login → 200, /api/auth/me → 200.
+    62→- Overwrote 10 view stubs in src/components/views/:
+    63→
+    64→  **Auth views (5):**
+    65→  1. `login.tsx` — LoginView: centered max-w-md card on hero-mesh bg with brand logo. Google OAuth button (mock — prompts for email, calls POST /api/auth/google). "or" divider. Email + password inputs with show/hide eye toggle. Remember-me checkbox + Forgot-password link (navigates reset-password). Submit → POST /api/auth/login → setUser + navigate to params.redirect or dashboard. Turnstile + Free-forever badges. Signup link.
+    66→  2. `signup.tsx` — SignupView: same layout. Google button. Name (optional) + email + password + confirm. Live password requirement indicators (8+ chars, uppercase, number) — green Check icon when met. Confirm field shows red border + X icon on mismatch, green Check on match. Submit → POST /api/auth/signup → setUser + navigate verify-email with email param. "Protected by Cloudflare Turnstile" note.
+    67→  3. `reset-password.tsx` — ResetPasswordView: email field → POST /api/auth/reset-request → success state with MailCheck icon, message "If an account exists for {email}... we've sent a reset link. Expires in 1 hour." Back-to-sign-in + try-different-address buttons.
+    68→  4. `update-password.tsx` — UpdatePasswordView: reads token from params.token (falls back to mock token + info toast for demo). New password + confirm with same requirement indicators as signup. Submit → POST /api/auth/reset-confirm { token, password } → toast + navigate login.
+    69→  5. `verify-email.tsx` — VerifyEmailView: "Check your email" page showing params.email (or user.email or input field if neither). Resend button with 60s countdown (useEffect timer). Re-uses /api/auth/reset-request as the verification-email mock (same "if account exists" semantics). "Wrong email? Sign up again" + "Skip for now → dashboard" links.
+    70→
+    71→  **Dashboard views (5):**
+    72→  6. `dashboard.tsx` — DashboardView: greeting "Welcome back, {firstName} 👋" + Create QR Code button. 5 stat cards in responsive grid (Total, Static, Dynamic with X/limit hint, Downloads, Total Scans — last locked with "Upgrade to Pro" badge for free plan). Dynamic limit from PLAN_LIMITS[user.plan].dynamicQr. 5 quick-create pill buttons (URL, WiFi, UPI, vCard, WhatsApp) that call setQuickCreateType + navigate create. Recent QR Codes grid (up to 6 cards) with QrPreview thumbnail, type badge, dynamic badge, scan/download counts, favorite handling. Empty state with brand icon + "Create your first QR code" CTA. Free-plan upgrade banner at bottom. Uses useQuery(['qr-codes']).
+    73→  7. `qr-codes.tsx` — QrCodesView (QR library): header with Create New button. Filter bar with 300ms-debounced search, type Select (all 20 types), status Select (Active/Paused/Expired/Archived/Favorites), date-range (two date inputs), sort Select (newest/oldest/scans/A-Z/Z-A), grid/list view toggle, clear-filters button. Honors params.folder from folder navigation (shows folder name in header). Bulk action bar appears when selection non-empty — shows count, select-all toggle, Move/Tag/Archive/Trash buttons (POST /api/qr-codes/bulk). Grid cards: hover-revealed selection checkbox, favorite star toggle (PATCH favorite), QrPreview thumbnail (120px), type/dynamic/status badges, title, date, scan count or lock icon, tags (max 3 + overflow), 3-dot dropdown with Edit/Duplicate/Favorite/PNG/SVG/Archive/Trash. List rows: same info in horizontal layout. Tag dialog and Move-to-folder dialog. Empty state. Uses useQuery(['qr-codes']) + useQuery(['folders']) + useMutation for patch/duplicate/bulk.
+    74→  8. `qr-detail.tsx` — QrDetailView: back button → qr-codes. Title + status badge + favorite star + Edit button. Large 300px QrPreview + PNG/SVG download buttons. Details card: Created, Last edited, Type, Error correction, Tags (with inline add/remove), Folder (with change dialog). Dynamic Code Details card (when isDynamic): Short URL with copy + open-external buttons, Destination URL with inline edit → PATCH, Status badge + Pause/Resume button → PATCH status, Password protect set/change, Expiry date set/change, Max scans set/change, "Seed demo scans" button → POST /api/seed. Analytics card: for free plan shows blurred stat blocks + chart placeholder with Lock overlay + Upgrade CTA; for paid shows 3 stat blocks (Total scans, Top country, Last 30 days) + 30-day recharts LineChart (brand stroke) + "Full analytics" link. Uses useQuery(['qr-codes', id]) + useQuery(['qr-codes', id, 'scans']) (gated on isDynamic && paid) + useQuery(['folders']).
+    75→  9. `folders.tsx` — FoldersView: header + New Folder button. Grid of folder cards: color swatch icon, name, count + date, Open button (navigates qr-codes with params.folder), inline Rename mode (name Input + color picker + Save/Cancel), Delete (AlertDialog warning "codes become unfiled"). Create dialog: name Input + 8-color picker. Uses useQuery(['folders']) + create/update/delete mutations (invalidates folders + qr-codes queries).
+    76→  10. `templates.tsx` — TemplatesView: header + Save current design button (dialog with preview + name → POST /api/templates with DEFAULT_DESIGN). 7 category tabs (All/Business/Events/Marketing/Education/India/My Templates) via shadcn Tabs. Grid of template cards: live QrPreview using template's design (payload = "https://createanqrcode.com"), category badge, PRO badge with Crown icon, "Use Template" button → navigate create with params.template=template.id, or "Upgrade to Use" → navigate billing if PRO + user not paid. Empty state per category. Uses useQuery(['templates']).
+    77→
+    78→- **Design compliance**: All views use semantic Tailwind tokens (bg-background, text-foreground, bg-card, border-border, text-muted-foreground) — no hardcoded bg-white/text-black on chrome (only on QR preview wrappers as required for QR visibility). Brand violet via bg-brand/text-brand/border-brand/bg-brand-muted throughout — NO indigo/blue. Mobile-first responsive (375/768/1280 breakpoints via sm:/lg:). Rounded-xl/2xl cards, hover transitions, fade-in-up animations on auth pages. All QR previews wrapped in `rounded-xl bg-white p-2 ring-1 ring-border` per spec. All views 'use client' + named + default export.
+    79→- **Lint fixes**: One initial error — `templates.tsx` had a function named `useTemplate` which triggered react-hooks/rules-of-hooks (use* prefix treated as hook). Renamed to `applyTemplate`. After fix: `bun run lint` → 0 errors, 0 warnings across all 25 view files + signup route.
+    80→- **End-to-end verification** (curl tests against running dev server):
+    81→  - POST /api/auth/signup {email, password: TestPass123, name} → 201 + session cookie set
+    82→  - GET /api/auth/me → 200 with user
+    83→  - POST /api/auth/login {email, password} → 200 (login works after signup)
+    84→  - GET /api/qr-codes → 200 (empty list initially)
+    85→  - POST /api/qr-codes (full QrDesign + dynamic) → 201 with shortCode generated
+    86→  - GET /api/qr-codes → 200 with created code
+    87→  - GET /api/templates → 200 with system templates
+    88→  - POST /api/folders {name, color} → 201
+    89→  - POST /api/seed {qrCodeId, count:20} → 200 {seeded:20}
+    90→  - GET /api/qr-codes/[id]/scans → 200 with scan records (country/city/device/etc)
+    91→  - HTTP 200 on `/` confirmed; dev.log shows no errors/warnings/exceptions.
+    92→
+    93→Stage Summary:
+    94→- All 10 auth + dashboard views shipped and verified. Signup API route created to fill the gap. End-to-end signup → login → dashboard → QR create → folders → templates → seed scans flow all return correct HTTP codes (201/200). App is feature-complete for spec Chapters 5–13. Remaining views (analytics, api-keys, billing, settings, bulk) and the q/[code] redirect page can be built next.
+    95→
+    96→---
+    97→Task ID: 4
+    98→Agent: billing-analytics-builder
+    99→Task: Build analytics, bulk generation, API keys, billing, and settings views per spec Chapters 12, 14, 15.2, 16, 17
+   100→
+   101→Work Log:
+   102→- Read worklog.md (Tasks 1+2+3), stores.ts, types.ts, format.ts, api.ts, qr-generate.ts, qr-types.ts, qr-preview.tsx, dashboard/shell.tsx, dashboard.tsx, qr-detail.tsx (head), pricing.tsx (head), existing API routes (analytics/summary, bulk, api-keys + [id], billing/upgrade + cancel + history, settings, export), prisma schema, package.json, dev.log, and the 5 existing stub view files.
+   103→- Overwrote 5 view stubs in src/components/views/:
+   104→
+   105→  1. `analytics.tsx` — AnalyticsView: Free-plan locked state with blurred preview grid + chart + Lock overlay + Upgrade CTA → billing. Paid users get: header with Crown plan badge + CSV Export (Pro+). Period selector (7d/30d/90d/1y/All) honoring plan limits — Starter=30d, Pro=365d, Business=all; buttons beyond plan limit are disabled with a Lock icon. 4 stat cards (Total Scans, Unique Visitors, Top Country with flag emoji + count hint, Peak Time hour). Scans Over Time recharts LineChart (violet total + dashed grey unique) with Daily/Weekly/Monthly toggle and aggregated buckets. Top Countries horizontal BarChart with flag axis ticks + percentage list. Device/OS/Browser donut PieCharts with legend (Mobile/Desktop/Tablet, Android/iOS/Windows/macOS, Chrome/Safari/Firefox/Edge) using violet palette. Top Referrers as horizontal bars. QR Code Performance table (title/type/scans). Real-Time Feed card with ● Live pulse badge, country flag, device icon, QR title, relative timestamp; uses useQuery refetchInterval=5s for live updates. Scan Heatmap (Business only) — 7×24 grid with violet color intensity by count, hover title shows count, legend. CSV Export generates file client-side (scanned_at/qr_code_title/qr_type/country/city/device/os/browser/referrer/language columns). Starter upgrade nudge at bottom. All charts via ResponsiveContainer.
+   106→
+   107→  2. `bulk.tsx` — BulkView: 5-step wizard. Access gate: free/starter → blurred preview + Lock overlay + "Bulk generation requires Pro plan or higher" + Upgrade CTA. Step indicator (1 Upload → 2 Map → 3 Review → 4 Generate → 5 Download) with checkmarks for completed steps. Step 1 Upload: drag-drop zone (CSV only via papaparse parse), parse error alert, 3 sample-CSV download buttons (URL/WiFI/UPI generated client-side). Step 2 Map: QR Type dropdown (all 20 QR_TYPES), Payload/Title/Folder column Select dropdowns auto-suggested from header keywords, 3-row preview table. Step 3 Review: 3 stat cards (Total/Valid/Invalid with destructive styling), invalid-row warning, compact DesignCustomizer (fg/bg color pickers, dot style, eye style, error correction, logo upload + remove), live QrPreview of row 1 in side panel, "Skip invalid and continue" or "Go back" buttons (batch limit enforced). Step 4 Generate: progress bar with animated client-side progress (jumps to 2% on submit, animates to 100% over ~600ms intervals), estimated time, "Please wait — do not close this tab" message; calls POST /api/bulk. Step 5 Download: success card "✓ N QR codes generated", Download ZIP button (renders QR PNGs via getQrDataUrl(payload, design, logo, 512) and packs with jszip, capped at 100 for browser memory), Download Error Report CSV (if any errors), View all QR codes / Generate another batch buttons, error log table. Uses useMutation for generate, useState for step/wizard state. All hooks (useMemo for validRows/invalidRows, useMutation for generateMut) hoisted above the access-gate early return to satisfy rules-of-hooks.
+   108→
+   109→  3. `api-keys.tsx` — ApiKeysView: Access gate for free/starter → blurred preview + Lock + "API access requires Pro plan or higher" + Upgrade CTA. Header with "Create New Key" button. Rate-limit info bar (60 req/min · 10,000 req/day · Pro plan badge). Empty state: KeyRound icon + "Create your first key" + "View API Documentation →" (navigate docs). Key list: desktop Table (Name, Key prefix `qac_live_…`, Scopes badge Read-only/Read+Write, Last used via timeAgo, Created date, Revoke button) + mobile cards for responsive. Create dialog: name field + scopes checkboxes (Read locked-on, Write optional) → POST /api/api-keys. One-time key reveal modal: ⚠ warning "This key will not be shown again", raw key in monospace, Copy to clipboard button (with copied state), "I have copied my key" checkbox (Done button disabled until checked), showCloseButton=false + can't-close-without-acknowledgement behavior. Delete: AlertDialog with key name, "Revoke key" destructive action → DELETE /api/api-keys/[id]. Docs CTA card at bottom. Uses useQuery(['api-keys']) + useMutation for create/delete.
+   110→
+   111→  4. `billing.tsx` — BillingView: Current Plan card (plan name, trial info card if trialEndsAt in future → "Trial ends {date} — N days remaining" + "Add payment method" note button). Usage card with 2 Progress bars (Dynamic QR Codes, Storage 12MB/50MB) + 4 usage stat tiles (Bulk batch, Analytics days, Team seats, API access). Upgrade section: Monthly/Yearly Tabs (yearly = 10 months = 2 months free, -17% badge), INR/USD Toggle pair. 3 plan cards (Starter ₹399/$7, Pro ₹899/$15 ★Popular with violet border + scale, Business ₹1,999/$35). Each card: name, tagline, price, trial info ("7-day trial, no card"), feature list with violet checks, CTA "Get {Plan}" disabled if current or lower plan. CTA calls POST /api/billing/upgrade { plan, currency } → on success updatePlan(plan, trialEndsAt) + toast + navigate dashboard. Payment History table (Date, Plan badge, Amount, Status badge with paid→emerald, Invoice link). Cancel subscription card (paid only) with AlertDialog explaining: static codes keep working, dynamic 30-day grace, analytics preserved 30 days → POST /api/billing/cancel → updatePlan('free') + toast. Refund policy card (7-day money-back, email support). Uses useQuery(['billing','history']) + useMutation for upgrade/cancel.
+   112→
+   113→  5. `settings.tsx` — SettingsView: Tabbed layout (Profile / Preferences / Notifications / Security / Data & Privacy) with icon TabsList that wraps on mobile. Profile tab: avatar (current image or initials fallback) + Upload new / Remove buttons (FileReader → dataURL → PATCH avatarUrl + updateUser), display name input, email readonly with "Cannot be changed — contact support" note, plan info card linking to billing, Save button → PATCH /api/settings { name } → updateUser. Preferences tab: timezone Select (29 common timezones, default Asia/Kolkata), date format Select (DD/MM/YYYY, MM/DD/YYYY, YYYY-MM-DD) with live example via formatDate, Save button. Notifications tab: 6 NotifRow rows (Security alerts, Trial reminders, Scan milestones [Pro+ locked], QR expiry [Pro+ locked], Weekly digest [Business locked], Product updates) each with label/description/Switch (disabled if locked) + locked badge; Save button → PATCH. Security tab: Password card with "Last changed: {createdAt}" + "Change password" dialog (current/new/confirm with strength bar 4-segment, password match Check/AlertTriangle icons, visual-only toast on save), Active Sessions list (3 mock sessions with device icon, OS·browser, location·lastActive, Current badge, Revoke button) + "Sign out all other devices" AlertDialog. Data & Privacy tab: Export data button (fetches GET /api/export → downloads JSON), Danger Zone card with Delete account button → AlertDialog with typing "DELETE" confirmation → DELETE /api/settings → logout + navigate home + toast. Uses useMutation for all saves; reads from useAuthStore.user.
+   114→
+   115→- **Bug fix**: `/api/api-keys/route.ts` had a broken import (`import { generateApiKey, hashApiKey } from '@/lib/format'`) — `hashApiKey` does not exist in `format.ts` (only in `auth.ts`). The route was 500-ing on every request. Fixed by removing the broken named import (kept the working `hashApiKey as hashKey` from `@/lib/auth`); updated the `void hashApiKey` trailing noop to `void hashKey`. This bug was pre-existing (introduced in Task 1) but only surfaced when the route was actually exercised end-to-end by my new ApiKeysView. Also lint-flagged an unused eslint-disable in settings.tsx (removed).
+   116→
+   117→- **Design compliance**: All 5 views use semantic Tailwind tokens (bg-background, text-foreground, bg-card, border-border, text-muted-foreground, bg-muted, bg-sidebar). Brand violet via `bg-brand`/`text-brand`/`border-brand`/`bg-brand-muted`/`bg-brand-foreground`/`text-brand-foreground` throughout — NO indigo, NO blue. Charts use `var(--brand)` (oklch 0.541 0.281 293 light / 0.62 0.22 295 dark) and a violet palette (DONUT_COLORS: #7C3AED → #F5F3FF). Mobile-first responsive (375/768/1280 breakpoints via sm:/lg:). Tables fall back to card stacks on mobile. Real-time feed and history use max-h-* + scroll-thin for long lists. Rounded-xl/2xl cards, hover transitions, brand-bordered active states. All views 'use client' + named + default export.
+   118→
+   119→- **Lint fixes**: (1) bulk.tsx — moved useMemo/useMutation calls above the access-gate early return (rules-of-hooks error). (2) settings.tsx — removed unused `// eslint-disable-next-line @next/next/no-img-element` (Next.js allowed `<img>` for data-URL avatar without warning). (3) analytics.tsx — removed unused `peakLabel` variable. After all fixes: `bun run lint` → 0 errors, 0 warnings.
+   120→
+   121→- **End-to-end verification** (curl tests against running dev server with cookie-based auth):
+   122→  - POST /api/auth/login → 200 (cookie set)
+   123→  - POST /api/billing/upgrade { plan: 'pro', currency: 'INR' } → 200 { plan: 'pro', trialEndsAt: '...', message: 'Plan upgraded to pro!' }
+   124→  - GET /api/analytics/summary?range=30 → 200 { hasAccess: true, days: 365, rangeDays: 30, total: 0, topCountries: [], devices: [], recent: [], heatmap: [[0,...]×7], ... }
+   125→  - GET /api/api-keys → 200 { data: [] } (empty initially)
+   126→  - POST /api/api-keys { name, scopes: 'read,write' } → 201 { id, name, prefix: 'qac_live_lBN...', scopes: 'read,write', rawKey: 'qac_live_lBN8eFGn...', createdAt }
+   127→  - GET /api/billing/history → 200 { data: [{ id, plan: 'pro', amount: 899, currency: 'INR', status: 'paid', invoiceId: null, createdAt }] }
+   128→  - GET /api/export → 200 { exportedAt, user, qrCodes: [], folders: [], apiKeys: [...], payments: [...] }
+   129→  - PATCH /api/settings { name, timezone, notifScans } → 200 { updated user record }
+   130→  - POST /api/bulk { rows, qrType, design, titleKey, payloadKey } → 200 { created: 2, errors: [], total: 2 }
+   131→  - DELETE /api/api-keys/[id] → 200 { ok: true }
+   132→  - POST /api/billing/cancel → 200 { ok: true, message: 'Subscription cancelled...' }
+   133→  - DELETE /api/settings (delete account) → 200 { ok: true }
+   134→  - HTTP 200 on `/` confirmed; dev.log shows no errors/warnings/exceptions after the api-keys route fix.
+   135→
+   136→Stage Summary:
+   137→- All 5 dashboard views (analytics, bulk, api-keys, billing, settings) shipped and verified end-to-end. Pre-existing api-keys route bug fixed. All API endpoints used by these views return correct HTTP codes (200/201) with correct response shapes. App is feature-complete for spec Chapters 12, 14, 15.2, 16, 17. Combined with Tasks 1-3, the CreateAnQRCode SaaS now covers all 23 spec chapters — only the q/[code] public redirect page (separate from these views) remains as a minor remaining piece.
+   138→
+   139→---
+   140→Task ID: 6
+   141→Agent: main (orchestrator)
+   142→Task: Integration, agent-browser verification, and final polish
+   143→
+   144→Work Log:
+   145→- Verified all 22 view files exist and export correctly (named + default exports matching app-shell lazy imports)
+   146→- Ran `bun run lint` → 0 errors, 0 warnings
+   147→- Started dev server on port 3000 (stable, HTTP 200)
+   148→- Used agent-browser to verify end-to-end:
+   149→  - Homepage renders all 9 sections (hero, live generator, social proof, features, QR types, how-it-works, testimonials, pricing, CTA) — VLM confirmed: clean, professional, violet branding, no bugs
+   150→  - Signup flow works (form validation, password requirements, account creation via POST /api/auth/signup)
+   151→  - Login flow works (POST /api/auth/login → session cookie → dashboard)
+   152→  - Dashboard renders: sidebar with labels, 5 stat cards, quick create pills, recent QR codes grid — VLM confirmed
+   153→  - Navigation works across all dashboard views: Dashboard, My QR Codes, Analytics (locked for free), Billing, Settings, Templates — all render correctly
+   154→  - Create page: 3-panel layout (type selector, form, customizer), all 20 QR types visible, QR generates black-on-white (scannable) — VLM confirmed
+   155→  - Templates page: QR previews render in all template cards, category tabs work — VLM confirmed
+   156→  - All API routes respond 200 (auth, qr-codes, folders, templates, billing, analytics, api-keys, export, settings, bulk, seed)
+   157→- Note: agent-browser's `click` command doesn't trigger React synthetic events reliably; used JS `.click()` via eval as workaround. Real browser clicks work fine.
+   158→- Screenshots saved: home, create, create-generated, dashboard, qr-codes, analytics, billing, settings, templates, pricing
+   159→
+   160→Stage Summary:
+   161→- Project is FULLY FUNCTIONAL and visually polished.
+   162→- All 23 chapters of the spec are implemented as views/features.
+   163→- 20 QR types with payload builders, full customizer (colors/dots/eyes/logo/gradient/EC/size), PNG+SVG download.
+   164→- Auth (signup/login/reset/verify/Google mock), dashboard, QR library (grid/list/filters/bulk/favorites/tags), QR detail with dynamic features (short URL, password protect, expiry, scan caps, redirect rules, seed demo scans), folders, templates (20 system + custom), analytics (charts, real-time feed, heatmap, CSV export), bulk generation (5-step wizard with CSV/ZIP), API keys (create/revoke/show-once), REST API v1 with rate limits, billing (4 plans, trials, upgrade/cancel, history), settings (profile/preferences/notifications/security/data privacy), help center, API docs, about page.
+   165→- Dynamic QR redirect handler at /q/[code] logs scans, handles pause/expiry/caps/password gate.
+   166→- Dark mode with violet brand (#7C3AED light / #8B5CF6 dark), mobile-first responsive, sticky footer.
+   167→- Dev server stable on port 3000. Ready for the scheduled webDevReview cron.
+   168→
+   169→---
+   170→Task ID: R (Redesign)
+   171→Agent: main (orchestrator)
+   172→Task: Complete UI redesign — transform from violet branding to PURE BLACK & WHITE MONOCHROME (Apple/Linear/Vercel minimalism) per CreateAnQRCode-VibePlan.md
+   173→
+   174→Work Log:
+   175→- Rewrote globals.css: replaced all violet brand tokens with pure monochrome (--brand → black/white, --brand-muted → neutral-100/900). Added Inter + JetBrains Mono font vars, 2px black/white focus rings, thin neutral scrollbars, prefers-reduced-motion override, `.inverted` class for CTA sections.
+   176→- Updated layout.tsx: switched fonts from Geist to Inter (400/500/600/700) + JetBrains Mono (400/500) via next/font/google. Updated title to "CreateAnQRCode — Free QR Code Generator. Forever."
+   177→- Updated button.tsx variants per spec: default = bg-primary text-primary-foreground (black/white inversion), outline = border-neutral-200/800, ghost/secondary = neutral-100/900. Added duration-150 ease-out transition.
+   178→- Redesigned marketing navbar: filled square logo mark (QR icon in bg-primary) + "CreateAnQRCode" wordmark (font-semibold tracking-tight). bg-white/80 dark:bg-[#0A0A0A]/80 backdrop-blur-md, border-neutral-200/800. Neutral link colors (neutral-600 hover:black).
+   179→- Redesigned footer: bg-neutral-50 dark:bg-neutral-950, 4-column grid (Product/Developers/Company/Legal), "Made in India" tagline.
+   180→- Redesigned dashboard shell: monochrome active states (bg-neutral-100 dark:bg-neutral-800, no violet border), neutral badges (variant="outline" text-neutral-500), avatar fallback bg-neutral-100/800, upgrade card with neutral border/bg.
+   181→- Redesigned home view: hero headline "Free QR codes. Forever." (56px font-semibold tracking -0.02em, "Forever." in neutral-500). Removed violet hero-mesh gradient + blur glow. Hero QR mockup uses plain black design. Final CTA uses `.inverted` class (bg-black text-white light / bg-white text-black dark).
+   182→- Created shape-based StatusBadge component (src/components/status-badge.tsx): active=filled dot, paused=pause icon, expired=filled square, archived=archive icon — NO colors, per spec Section 1.8.
+   183→- Rewrote templates-data.ts: all 20 system templates now use monochrome/grayscale designs (black/neutral-900/700/500 with varied dot/eye styles + neutral gradients). No hue anywhere.
+   184→- Swept all 22 view files: replaced hardcoded violet refs in about.tsx (stats), analytics.tsx (chart colors → grayscale #18181B/#52525B/#71717A), folders.tsx (color palette → 8 neutral shades), docs.tsx (example JSON), create.tsx (template presets), types.ts (default gradient colors). Kept QR color picker presets (COLOR_PRESETS) as the spec explicitly allows colored QR swatches.
+   185→- Removed violet-400 reference in final CTA, "violet gradient" mention in testimonial text.
+   186→
+   187→Verification (agent-browser + VLM):
+   188→- Homepage: VLM confirms "No color is visible in the UI chrome—only black, white, and grayscale. Hero headline is 'Free QR codes. Forever.' Logo resembles filled square + wordmark."
+   189→- Dashboard: VLM confirms "No color in sidebar/topbar/cards. Sidebar active item is neutral grey. Clean/minimal like Linear/Vercel. No violet accent."
+   190→- Login: VLM confirms "Pure black/white monochrome. Google button (G logo) is the only colored element."
+   191→- Create page: VLM confirms "UI chrome pure monochrome. QR color picker swatches show color (allowed). Aesthetic clean, matching Linear/Vercel."
+   192→- Dark mode home: VLM confirms "Pure monochrome (black bg, white text). Final CTA inverted (white bg, black text)."
+   193→- Dark mode create: VLM confirms "Near-black #0A0A0A background. QR preview white with black modules. Clean/minimal."
+   194→- `bun run lint` → 0 errors, 0 warnings. Dev server HTTP 200.
+   195→
+   196→Stage Summary:
+   197→- UI is now PURE BLACK & WHITE MONOCHROME per the VibePlan aesthetic (Apple/Linear/Vercel minimalism).
+   198→- ZERO color in UI chrome (only exception: Google G logo + QR color picker swatches, both explicitly allowed by spec).
+   199→- Fonts: Inter (sans) + JetBrains Mono (mono).
+   200→- All views, navbar, footer, dashboard shell, buttons, badges, templates now monochrome.
+   201→- Final CTA uses inverted black/white treatment per spec.
+   202→- Shape-based status badges (no color) implemented.
+   203→- Dark mode fully monochrome (#0A0A0A bg / white text, inverted CTA).
+   204→
+   205→---
+   206→Task ID: P (Polish)
+   207→Agent: frontend-styling-expert
+   208→Task: Add styling polish + micro-interactions to CreateAnQRCode views (PURE BLACK & WHITE MONOCHROME aesthetic per Task R design system)
+   209→
+   210→Work Log:
+   211→- globals.css: Appended 5 reusable polish utility classes (all monochrome, 150ms ease-out transitions per spec):
+   212→  - `.card-hover` — 150ms ease-out lift on hover: translateY(-0.125rem) + 4px shadow + border-color bump to neutral-400 (light) / neutral-600 (dark). Used on QR cards, stat cards, template cards, feature cards.
+   213→  - `.btn-press` — 100ms ease-out scale(0.98) on :active. Used on primary CTAs and template "Use Template" button.
+   214→  - `.fade-in` — reuses existing `fade-in-up` keyframe (0.3s ease-out entry animation).
+   215→  - `.skeleton-shimmer` — monochrome gradient sweep (var(--muted) → var(--accent) → var(--muted)) with `@keyframes shimmer` 1.5s infinite. Background-size 200% for the sweep effect.
+   216→  - `.focus-ring` — 2px ring (var(--ring)) + 2px offset (var(--background)) on :focus-visible, reusing the existing focus ring pattern from `@layer base`.
+   217→
+   218→- qr-codes.tsx (GridCard): Replaced `transition-all hover:-translate-y-0.5 hover:shadow-md` with `card-hover`. Added `overflow-hidden` + a top accent bar (`absolute inset-x-0 top-0 h-0.5 origin-left scale-x-0 bg-foreground transition-transform duration-150 group-hover:scale-x-100`) that slides in on hover. Favorite star: added `transition-transform duration-150 hover:scale-110` and switched the favorited color from `fill-amber-400 text-amber-400` (color violation) → `fill-foreground text-foreground` (monochrome). 3-dot menu button: added `hover:bg-neutral-100 dark:hover:bg-neutral-800`. Reorganized the footer: scan count is now in the footer (with `BarChart3` icon, monochrome `text-muted-foreground` — removed the previous emerald-600 color violation) alongside the updated date, with the menu button on the right. Empty state: switched the illustration bg from `bg-brand-muted` to `bg-neutral-100 dark:bg-neutral-900`, padding `py-16` → `py-20`, and added `btn-press` to the "Create QR Code" button. Added `BarChart3` to lucide-react imports.
+   219→
+   220→- dashboard.tsx (stat cards): Added `group card-hover` to each stat Card. Added a thin top accent line (`h-0.5 bg-foreground/0 group-hover:bg-foreground transition-colors`) that fades in on hover. Added a small decorative `TrendingUp` arrow in the top-right corner of each card (`absolute right-2 top-2 h-3 w-3 text-neutral-300 group-hover:text-foreground dark:text-neutral-700`). Icon container: switched bg from `bg-muted`/`bg-brand-muted` to `bg-neutral-100 dark:bg-neutral-900` with `group-hover:bg-neutral-200 dark:group-hover:bg-neutral-800 transition-colors`. The accent stat (Dynamic QR Codes) now uses `text-foreground` instead of `text-brand` for its icon. "Create your first QR code" empty state button: added `btn-press`.
+   221→
+   222→- templates.tsx (template cards): Replaced `transition-all hover:-translate-y-0.5 hover:shadow-md` with `card-hover`. Added `overflow-hidden`. PRO badge: removed the inline `<Badge>` with `Crown` icon (which was inside the badges row) and replaced with a small absolutely-positioned top-right corner badge (`absolute right-2 top-2 z-10 rounded bg-foreground px-1.5 py-0.5 text-[10px] font-semibold text-background`) — pure monochrome inversion. Removed the now-unused `Crown` import. Hover overlay on QR preview: wrapped the QR preview in a `relative` container and added an absolute overlay (`absolute inset-0 flex items-center justify-center rounded-xl bg-black/70 opacity-0 backdrop-blur-[1px] transition-opacity duration-150 group-hover:opacity-100`) with white "Use Template" text that appears on hover. "Use Template" button: added `btn-press`.
+   223→
+   224→- home.tsx: Features section (6 cards): replaced `transition-all hover:-translate-y-1 hover:shadow-lg hover:border-brand/40` with `card-hover` + `relative`. Icon container: changed `transition-colors` to `transition-all duration-150` and added `group-hover:scale-110`. Added a subtle `ArrowRight` hover arrow in the bottom-right of each card (`absolute bottom-5 right-5 h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity duration-150`). Testimonials: added a large decorative right-double-quote (`&rdquo;`) absolutely positioned in the top-right of each testimonial card (`font-serif text-7xl leading-none text-neutral-200 dark:text-neutral-800`), with `pointer-events-none select-none` and `aria-hidden="true"`. Wrapped the CardContent in `relative` so the quote text sits above the decorative mark. Pricing preview cards: removed `border-brand shadow-lg ring-1 ring-brand/30` from the "Popular" (Pro) card and replaced with `shadow-lg ring-1 ring-foreground` — uses the semantic foreground token directly for a cleaner monochrome ring treatment.
+   225→
+   226→- card.tsx (base Card): Added `transition-colors duration-150` to the base Card className so any color changes (e.g. on hover, on selection) animate smoothly across all Card usages app-wide. Existing class order preserved; no breakage to existing consumers.
+   227→
+   228→Verification:
+   229→- `bun run lint` → 0 errors, 0 warnings.
+   230→- Dev server: HTTP 200 on `/`. Home page HTML contains 6× `group-hover:scale-110`, 6× `group-hover:opacity-100` (feature card hover effects), and 3× `text-neutral-200` (testimonial quote marks) — confirming all home page polish changes render.
+   231→- dev.log: no new compile errors or Fast Refresh warnings after edits (the earlier "Fast Refresh had to perform a full reload" warnings in the log were clustered around a cross-origin preview-chat request from a prior verification step, not from my edits — subsequent compiles all succeed cleanly).
+   232→- All polish utilities use semantic Tailwind tokens (bg-foreground, text-background, bg-neutral-*, text-muted-foreground) — no hardcoded colors, no hue introduced. Aesthetic remains PURE BLACK & WHITE MONOCHROME per Task R.
+   233→
+   234→Stage Summary:
+   235→- Micro-interactions layer added on top of Task R's monochrome design system: subtle card lift + top accent on hover, smooth button press feedback, decorative trend arrows, hover overlays on template previews, large decorative quote marks behind testimonials, and a monochrome ring on the popular pricing card.
+   236→- Three pre-existing color violations in qr-codes.tsx (amber favorite star + emerald scan count, both in GridCard) and the Crown-outlined PRO badge in templates.tsx were normalized to monochrome as part of the polish pass, fully aligning GridCard and template cards with the Task R aesthetic mandate.
+   237→- Reusable `.card-hover`, `.btn-press`, `.fade-in`, `.skeleton-shimmer`, `.focus-ring` utilities are now available app-wide for future views to use.
+   238→
+   239→---
+   240→Task ID: CR1 (Cron Review 1)
+   241→Agent: main (orchestrator)
+   242→Task: Scheduled QA + bug fixes + Command Palette feature + styling polish
+   243→
+   244→## Current Project Status Assessment
+   245→- App is feature-complete (all 23 spec chapters) and visually polished in pure B/W monochrome (Task R).
+   246→- Dev server stable on port 3000, HTTP 200, lint clean (0 errors).
+   247→- All API routes respond correctly. Auth, QR CRUD, analytics, billing, bulk, api-keys, settings all verified working.
+   248→
+   249→## QA Performed (agent-browser + VLM)
+   250→- Homepage: loads with all 10 sections, hero "Free QR codes. Forever.", live generator renders QR (SVG) on click — pure monochrome, no bugs.
+   251→- Signup flow: form validation works, account created, redirects to verify-email with "Skip for now" option → dashboard.
+   252→- Dashboard: empty state shows clearly with CTA, stat cards show zeros, sidebar navigation works.
+   253→- Create QR: 3-panel layout, all 20 QR types, generates black-on-white scannable QR, saves to library.
+   254→- QR Library: saved codes appear as cards with thumbnails, filters/search visible, pure monochrome.
+   255→- Dark mode: pure monochrome (#0A0A0A bg / white text), final CTA inverted (white bg / black text).
+   256→- Mobile (375px): layout adapts to single column, readable, no bugs.
+   257→- Command palette (Cmd+K): opens, filters correctly, navigates on selection.
+   258→
+   259→## Bugs Found & Fixed
+   260→1. **Colorful emojis breaking monochrome aesthetic**:
+   261→   - Removed 👋 from dashboard welcome heading
+   262→   - Removed 🎉 from pricing/billing success toasts
+   263→   - **Replaced all flag emojis (🇮🇳🇺🇸🇬🇧 etc.) in analytics with monochrome 2-letter country code badges** (border + font-mono) — flag emojis are colorful and violated the pure B/W aesthetic. Added `COUNTRY_NAMES` map + `countryCode()` helper.
+   264→2. **Pre-existing color violations found & fixed by polish subagent (Task P)**:
+   265→   - Favorite star was `amber-400` → normalized to `fill-foreground text-foreground` (monochrome)
+   266→   - Scan count was `emerald-600` → normalized to `text-muted-foreground` (monochrome)
+   267→   - Pricing "Popular" card had `border-brand` colored ring → changed to `ring-1 ring-foreground` (monochrome)
+   268→
+   269→## New Features Added
+   270→1. **Command Palette (Cmd+K / Ctrl+K)** — `src/components/command-palette.tsx`
+   271→   - Global keyboard shortcut (Cmd+K on Mac, Ctrl+K on Windows/Linux)
+   272→   - Fuzzy search across all navigation + quick actions
+   273→   - Grouped: Navigation, Dashboard (auth-gated), Quick Create (URL/WiFi/UPI/vCard/WhatsApp), Account
+   274→   - Keyboard navigation (↑↓ to move, Enter to select, Esc to close)
+   275→   - Shortcut hints (G H, G C, G D, etc.)
+   276→   - Search trigger button with ⌘K hint added to both marketing navbar and dashboard topbar
+   277→   - Adapts to auth state (shows dashboard actions only when logged in)
+   278→2. **Styling polish utilities** — added to `globals.css`:
+   279→   - `.card-hover` (lift + shadow + border bump on hover)
+   280→   - `.btn-press` (scale 0.98 on active)
+   281→   - `.fade-in` (fade-in-up animation)
+   282→   - `.skeleton-shimmer` (monochrome shimmer for loading states)
+   283→   - `.focus-ring` (visible focus outline for accessibility)
+   284→3. **Micro-interactions across views** (Task P subagent):
+   285→   - QR cards: sliding top accent bar on hover, star scale-110, menu hover bg, scan count footer with BarChart3 icon
+   286→   - Dashboard stat cards: top accent line, TrendingUp arrow, icon container hover scale
+   287→   - Template cards: PRO badge (bg-foreground text-background), hover overlay with "Use Template"
+   288→   - Home feature cards: icon scale-110 on hover, ArrowUpRight appears on hover
+   289→   - Testimonials: large decorative quote mark behind text
+   290→   - Base Card component: smooth transition-colors duration-150
+   291→
+   292→## Verification Results
+   293→- `bun run lint` → 0 errors, 0 warnings
+   294→- Dev server: HTTP 200 on `/`, no compile errors in dev.log
+   295→- agent-browser: homepage, signup, dashboard, create QR, QR library, dark mode, mobile all verified
+   296→- Command palette: opens with Cmd+K, filters correctly ("pricing" → 1 result, "create" → 6 results), navigates on click
+   297→- VLM confirms: pure monochrome maintained, no color violations, clean/minimal aesthetic
+   298→
+   299→## Unresolved Issues / Risks
+   300→- None critical. The app is stable and feature-complete.
+   301→- Minor: agent-browser's native `click` command doesn't always trigger React synthetic events — used JS `.click()` via eval as workaround (real browser clicks work fine for users).
+   302→
+   303→## Priority Recommendations for Next Phase
+   304→1. **QR scan simulation on detail page** — add a phone mockup preview showing how the QR appears when scanned (mobile frame + destination preview)
+   305→2. **Loading skeletons** — add `.skeleton-shimmer` loading states to QR library, analytics, templates while data fetches
+   306→3. **Keyboard shortcuts help** — a "?" key shortcut that shows all available keyboard shortcuts in a dialog
+   307→4. **Onboarding tour** — first-time user guided tour of the dashboard (3-4 steps highlighting key features)
+   308→5. **QR code comparison view** — side-by-side comparison when editing a QR design (before/after)
+   309→
+   310→---
+   311→Task ID: L
+   312→Agent: loading-skeletons-agent
+   313→Task: Add monochrome `.skeleton-shimmer` loading skeletons to QR library, dashboard, templates, analytics, and folders views (replacing generic spinners)
+   314→
+   315→Work Log:
+   316→- **`src/components/views/qr-codes.tsx`** — replaced the `Loader2` spinner with a skeleton layout that mirrors the real page:
+   317→  - Skeleton filter bar (when `isLoading`): a `grid` of `h-9` rounded-md blocks (search input spanning 2 cols + 2 dropdowns) and a second row of 4 small `h-9` blocks for the date/sort/view controls.
+   318→  - Skeleton grid (when `isLoading`): 8 cards in the same `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` layout, each with a centered `aspect-square w-32 rounded-xl` QR thumbnail, two `h-5` badges, an `h-4 w-3/4` title, an `h-3 w-1/2` date line, and a footer row with `h-3 w-16` + `h-3 w-12` scan/date blocks separated by a top border.
+   319→  - Removed now-unused `Loader2` import.
+   320→- **`src/components/views/dashboard.tsx`** — two skeleton regions while `isLoading`:
+   321→  - Stats grid: 5 `h-24 rounded-xl` cards (matching `grid-cols-2 lg:grid-cols-5`) each with a label line (`h-3 w-20`), value block (`h-6 w-16`), and a `h-9 w-9 rounded-lg` icon placeholder.
+   322→  - Recent QR codes grid: 3 cards in `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3`, each with an `aspect-square w-24 rounded-xl` QR thumbnail on the left and stacked label/title/date/scan skeletons on the right.
+   323→  - Removed now-unused `Loader2` import.
+   324→- **`src/components/views/templates.tsx`** — replaced spinner with 6 skeleton template cards in the same `grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5` layout. Each card: centered `aspect-square` QR preview (`rounded-xl`), category badge (`h-5 w-16`), name (`h-4 w-2/3`), and a full-width button (`h-8 rounded-md`). `Loader2` import kept (still used in the save dialog).
+   325→- **`src/components/views/analytics.tsx`** — replaced spinner (the `isLoading || !summary` branch) with:
+   326→  - 4 stat card skeletons (`h-20 rounded-xl`, label + value + icon placeholder) in `grid-cols-2 lg:grid-cols-4`.
+   327→  - 1 chart container skeleton (`h-64 w-full rounded-xl`).
+   328→  - 2 donut container skeletons (`h-48 w-full rounded-xl`) side by side in `grid-cols-1 lg:grid-cols-2`.
+   329→  - Removed now-unused `Loader2` import.
+   330→- **`src/components/views/folders.tsx`** — replaced spinner with 4 skeleton folder cards in `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`. Each `h-20 rounded-lg` card has an `h-11 w-11 rounded-xl` icon placeholder and stacked name (`h-4 w-2/3`) + count (`h-3 w-1/2`) lines. `Loader2` import kept (still used in the create dialog).
+   331→
+   332→Aesthetic compliance:
+   333→- All skeletons use the existing `.skeleton-shimmer` utility (monochrome gradient sweep — `var(--muted)` → `var(--accent)` → `var(--muted)`), so they render pure black/white/neutral in both light and dark themes.
+   334→- Skeleton dimensions match real content (same grid columns, same card heights/widths, same border + padding pattern), giving a stable, layout-shift-free loading experience consistent with the Apple/Linear/Vercel minimalism of the app.
+   335→- Border tokens (`border-border`) and radius tokens (`rounded`, `rounded-md`, `rounded-lg`, `rounded-xl`) reused from the design system — no new colors introduced.
+   336→
+   337→Verification Results:
+   338→- `bun run lint` → 0 errors, 0 warnings (clean).
+   339→- Dev server on port 3000 → `GET /` returns HTTP 200.
+   340→- `tail dev.log` → no compile errors; multiple successful recompiles after each edit (`✓ Compiled in Nms`), all `GET / 200`.
+   341→- No regressions: filter bar, bulk actions, dialogs, and all non-loading branches remain untouched.
+   342→
+   343→Stage Summary:
+   344→- Loading states for the 5 main data-driven views (qr-codes, dashboard, templates, analytics, folders) upgraded from generic centered spinners to layout-matched monochrome shimmer skeletons, addressing priority recommendation #2 from Task CR1.
+   345→- This completes the loading-skeletons item on the next-phase roadmap. Remaining recommendations (QR scan phone mockup, keyboard-shortcuts help dialog, onboarding tour, QR comparison view) are still open.
+   346→
+   347→---
+   348→Task ID: MC (Monochrome Cleanup)
+   349→Agent: main (orchestrator)
+   350→Task: Sweep remaining colored classes (emerald, amber, green) across 7 view files to restore PURE BLACK & WHITE MONOCHROME aesthetic per Task R mandate.
+   351→
+   352→Work Log:
+   353→- `src/components/views/qr-codes.tsx`:
+   354→  - STATUS_BADGE map (lines 43–44): `bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30` → `bg-foreground/5 text-foreground border-border` (active); `bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30` → `bg-muted text-muted-foreground border-border` (paused). Now matches the existing shape-based StatusBadge philosophy — pure monochrome.
+   355→  - ListRow favorite star (line 647): `fill-amber-400 text-amber-400` → `fill-foreground text-foreground` (GridCard was already fixed in Task P; ListRow was missed).
+   356→  - ListRow scan count (line 651): `text-emerald-600 dark:text-emerald-400` → `text-foreground`.
+   357→- `src/components/views/signup.tsx`:
+   358→  - Confirm-password Check icon (line 217): `text-emerald-500` → `text-foreground`.
+   359→  - Requirement component (lines 261–262): `text-emerald-600 dark:text-emerald-400` → `text-foreground` for met label; `bg-emerald-500/15 text-emerald-600 dark:text-emerald-400` → `bg-foreground/10 text-foreground` for met check chip.
+   360→- `src/components/views/update-password.tsx`:
+   361→  - Same two fixes as signup.tsx (lines 141, 175, 176) — Requirement component + confirm-password Check normalized to `text-foreground` / `bg-foreground/10`.
+   362→- `src/components/views/dashboard.tsx`:
+   363→  - RecentQRCard scan count (line 310): `text-emerald-600 dark:text-emerald-400` → `text-foreground`.
+   364→- `src/components/views/settings.tsx`:
+   365→  - Password strength bar (line 618): `bg-amber-500` (medium) → `bg-muted-foreground`; `bg-emerald-500` (strong) → `bg-foreground`. Weak remains `bg-destructive` (errors only). Now the 3-step strength scale reads destructive → muted → foreground, fully monochrome.
+   366→  - Confirm-password Check icon (line 641): `text-emerald-500` → `text-foreground`.
+   367→- `src/components/views/billing.tsx`:
+   368→  - Payment "paid" status badge (line 356): `bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400` → `bg-foreground/5 text-foreground border-border`. Now aligns with the active/StatusBadge pattern used elsewhere.
+   369→- `src/components/views/types-ref.tsx`:
+   370→  - Payload code block (line 32): `text-green-400` → `text-neutral-400`. Keeps the dark code-block aesthetic (bg-zinc-950) but removes the green hue.
+   371→
+   372→Verification Results:
+   373→- `bun run lint` → 0 errors, 0 warnings (clean).
+   374→- Verification grep: `rg "emerald|amber-|green-|text-blue-|rose-|pink-|fill-amber|fill-emerald" src/components/ --glob "*.tsx"` → **NO matches** (excluding the spec-allowed COLOR_PRESETS in color-picker / skeleton utilities, none of which appeared in the results).
+   375→- Dev server: `GET /` returns HTTP 200; dev.log shows clean recompiles after each edit, no errors.
+   376→- The ONLY remaining color in the codebase is the Google "G" logo (`#4285F4`/`#34A853`/`#FBBC05`/`#EA4335` in signup/login Google icon SVGs) and the QR code color picker swatches (COLOR_PRESETS) — both explicitly allowed by spec.
+   377→
+   378→Stage Summary:
+   379→- All 7 view files swept clean of emerald/amber/green violations. The app now has ZERO color in UI chrome across every view, fully restoring the Task R pure black-and-white monochrome mandate.
+   380→- Reusable monochrome patterns now consistent app-wide:
+   381→  - Success/met states: `text-foreground` + `bg-foreground/10` (or `bg-foreground/5` for badges).
+   382→  - Warning/paused/medium states: `text-muted-foreground` + `bg-muted`.
+   383→  - Error states: `text-destructive` + `bg-destructive/15`.
+   384→  - Strong password strength: `bg-foreground`. Medium: `bg-muted-foreground`. Weak: `bg-destructive`.
+   385→- No new components or utilities introduced — purely a color-class normalization pass.
+   386→
+   387→---
+   388→Task ID: CR2 (Cron Review 2)
+   389→Agent: main (orchestrator)
+   390→Task: Scheduled QA + 3 new features (loading skeletons, keyboard shortcuts help, QR scan simulation preview) + monochrome cleanup
+   391→
+   392→## Current Project Status Assessment
+   393→- App is feature-complete, stable, and visually polished in pure B/W monochrome.
+   394→- Dev server stable on port 3000, HTTP 200, lint clean.
+   395→- Previous round (CR1) identified 5 priority recommendations. This round implemented 3 of them + fixed remaining color violations.
+   396→
+   397→## QA Performed
+   398→- Server health check: HTTP 200, no compile errors after restart.
+   399→- Tested login flow, dashboard navigation, QR library, QR detail page.
+   400→- Verified no console errors after server restart (earlier errors were stale from previous compile).
+   401→- VLM confirmed: pure monochrome maintained across all tested views.
+   402→
+   403→## New Features Added
+   404→
+   405→### 1. QR Scan Simulation Preview (`src/components/scan-preview.tsx`)
+   406→- **Phone mockup** with realistic frame (notch, status bar, bottom indicator) showing what users see when they scan the QR code.
+   407→- **Type-specific destination previews**:
+   408→  - URL/website: shows domain, page skeleton, "Open Website" button
+   409→  - WiFi: shows network name, security, password, "Join Network" button
+   410→  - UPI: shows payee name, UPI ID, amount (₹), "Pay" button + "Works with PhonePe, GPay, Paytm, BHIM"
+   411→  - vCard: shows contact name, company, phone/email, "Save Contact" button
+   412→  - Email: shows recipient, subject, body preview, "Compose Email" button
+   413→  - SMS: shows number, message, "Send Message" button
+   414→  - WhatsApp: shows number, message, "Open Chat" button
+   415→  - Phone/Location: simple action preview
+   416→  - Plain text: shows text content
+   417→- **Scan animation**: "Preview scan" button triggers a scanning animation (ping rings) then shows the destination.
+   418→- Integrated into qr-detail.tsx as the center column of a 3-column grid (QR preview | scan preview | details).
+   419→- Pure monochrome phone frame with neutral-900 border.
+   420→
+   421→### 2. Keyboard Shortcuts Help Dialog (`src/components/keyboard-shortcuts-help.tsx`)
+   422→- Press `?` key (when not in an input) to open a shortcuts help dialog.
+   423→- Lists all keyboard shortcuts grouped by: Global (⌘K, ?, Esc), Navigation (G+H, G+C, G+D, G+Q, G+F, G+T, G+A, G+K, G+B, G+S), Command Palette (↑↓, ↵, Esc).
+   424→- Monochrome `kbd` badges for each key.
+   425→- Keyboard icon button added to dashboard topbar (click to open).
+   426→- "Tip" section at bottom explaining command palette usage.
+   427→
+   428→### 3. Loading Skeletons (Task L subagent)
+   429→- Replaced all `Loader2` spinner loading states with layout-matched `.skeleton-shimmer` skeletons across 5 views:
+   430→  - **qr-codes.tsx**: skeleton filter bar + 8-card skeleton grid
+   431→  - **dashboard.tsx**: 5 stat card skeletons + 3 recent QR card skeletons
+   432→  - **templates.tsx**: 6 template card skeletons
+   433→  - **analytics.tsx**: 4 stat card skeletons + chart container + 2 donut containers
+   434→  - **folders.tsx**: 4 folder card skeletons
+   435→- All skeletons use the existing `.skeleton-shimmer` utility (monochrome gradient sweep).
+   436→
+   437→## Bugs Found & Fixed (Task MC subagent — Monochrome Cleanup)
+   438→Swept all remaining colored classes across 7 view files:
+   439→- **qr-codes.tsx**: StatusBadge emerald/amber → monochrome; favorite star amber → foreground; scan count emerald → foreground
+   440→- **qr-detail.tsx**: StatusBadge emerald/amber → monochrome; favorite star amber → foreground
+   441→- **signup.tsx**: Check icon emerald → foreground; requirement met state emerald → foreground
+   442→- **update-password.tsx**: Same as signup
+   443→- **dashboard.tsx**: scan count emerald → foreground
+   444→- **settings.tsx**: password strength bar amber→muted-foreground, emerald→foreground; Check icon emerald→foreground
+   445→- **billing.tsx**: payment "paid" badge emerald → foreground/5
+   446→- **types-ref.tsx**: code block text-green-400 → text-neutral-400
+   447→- **Result**: Zero color violations remain in UI chrome (grep confirms no emerald/amber/green/blue/rose/pink anywhere except QR color picker presets).
+   448→
+   449→## Verification Results
+   450→- `bun run lint` → 0 errors, 0 warnings
+   451→- Dev server: HTTP 200, no compile errors
+   452→- Grep for color violations: **0 matches** (pure monochrome confirmed)
+   453→- agent-browser: keyboard shortcuts dialog opens with `?` key, shows all shortcuts grouped by category
+   454→- VLM confirms QR detail page: "PURE monochrome, phone mockup scan preview present, no colored status badges"
+   455→- VLM confirms QR library: favorite stars and scan counts are monochrome
+   456→
+   457→## Unresolved Issues / Risks
+   458→- None critical. App is stable, feature-complete, and fully monochrome.
+   459→- Minor: agent-browser's `window.dispatchEvent` for synthetic KeyboardEvents doesn't always trigger React listeners (the `?` key needed `agent-browser press "?"` to work). Real keyboard presses work fine for users.
+   460→
+   461→## Priority Recommendations for Next Phase
+   462→1. **Onboarding tour** — first-time user guided tour of the dashboard (3-4 steps highlighting key features)
+   463→2. **QR code comparison view** — side-by-side comparison when editing a QR design (before/after)
+   464→3. **Activity log / audit trail** — show recent user actions (created, edited, deleted QR codes) in settings
+   465→4. **Export to multiple formats** — add PDF and EPS export options alongside PNG/SVG
+   466→5. **QR code validation** — scan-test feature that checks if a generated QR is scannable at different sizes
+   467→
+   468→---
+   469→Task ID: 3
+   470→Agent: main (orchestrator)
+   471→Task: Mobile-first UI with all QR customization + perfect alignment; remove unprofessional QR codes from landing page; deep implementation
+   472→
+   473→Work Log:
+   474→- Added mobile-first utilities to globals.css: .no-scrollbar, .pb-safe/.pt-safe (iOS safe areas), .snap-x-mandatory/.snap-start, .tap-none (kill tap highlight), .touch-target (44px), .qr-frame, .sticky-surface (backdrop blur).
+   475→- home.tsx — full mobile-first redesign:
+   476→  * REMOVED the unprofessional hero QR mockup (rotated card with amateur "Square · Black on white / Live" labels).
+   477→  * Replaced with a professional QR showcase: one elegantly-framed hero QR (extra-rounded, high recovery) + a 3-up style-variant strip (Rounded / Dots / Gradient) that demonstrates the product's range — all real, beautifully-styled QRs, no plain black squares.
+   478→  * Every section made mobile-first: hero stacks centered (headline→CTA→showcase), live generator stacks (input full-width + preview centered), stats 2→3→5 cols, features 1→2→3 cols, type pills flex-wrap, steps/testimonials/pricing 1→3 cols, final CTA stacks buttons. Consistent px-4/py-12 mobile → px-6/py-20 desktop.
+   479→  * Fixed copy: "Square · Black on white" → "Extra-rounded · High recovery" (matches actual design).
+   480→- create.tsx — deep mobile-first rewrite with all QR customization:
+   481→  * Added useIsDesktop() hook (useSyncExternalStore at lg/1024px breakpoint, SSR-safe, flash-free).
+   482→  * Conditional rendering: desktop = 3-panel (type | form | live-preview+customizer); mobile = sticky live preview + tabbed Content/Design/Dynamic + sticky bottom action bar. Only ONE layout mounts → eliminated double QR render (verified: exactly 1 QR preview in both).
+   483→  * Mobile tabs expose ALL 7 customization sections (Colors, Dot Style, Eye Style, Error Correction, Output Size, Gradient, Logo) via the Design tab — fully accessible, perfectly aligned.
+   484→  * Always-live preview (professional generator UX): preview updates instantly as you type/customize; download/save validate payload.
+   485→  * Sticky top preview (compact 72px QR + title + PNG/SVG) and sticky bottom action bar (PNG/SVG/Save) with pb-safe for notched devices; added pb-24 to tab content so nothing hides behind the sticky bar.
+   486→  * Extracted reusable sub-components: TypeSelector (horizontal/vertical), PreviewPanel, FormPanel, DynamicPanel, DynamicFields, Customizer, FieldRenderer — shared between layouts, no markup duplication.
+   487→  * Validation routes user to the right tab (content/dynamic) on error.
+   488→- Verified with agent-browser: mobile (390×844) + desktop (1440×900). Confirmed: hero centered (h1 center=viewport center), type strip horizontal scroll, all 3 tabs work, Dot Style picker updates live preview, dynamic toggle reveals destination/password/expiry/maxScans, PNG download → "Downloaded PNG" toast on both viewports, no console errors, single QR preview (no double render), sticky footer at viewport bottom.
+   489→
+   490→Stage Summary:
+   491→- Landing page: unprofessional rotated QR mockup removed; professional showcase added; fully mobile-first with perfect alignment.
+   492→- Create view: deep mobile-first implementation with sticky live preview + tabbed panels; ALL QR customization (colors, dots, eyes, error correction, output size, gradient, logo) accessible on mobile; perfect alignment; no double render.
+   493→- Lint clean. Dev server healthy. Brand stays pure black & white monochrome (no violet/blue).
+   494→
+   495→---
+   496→Task ID: 4
+   497→Agent: main (orchestrator)
+   498→Task: Deep competitor research → update pricing plans & features to beat the market
+   499→
+   500→Work Log:
+   501→- Used z-ai web_search CLI to research 6+ competitors: QR Tiger, Bitly, Beaconstac/Uniqode, QR Code Monkey, QR Code Generator (TQRCG), Hovercode, ViralQR, QRJolt.
+   502→- Key findings: QR Tiger free = 3 dynamic + 500-scan CAP; Bitly free = 2 QR/mo; Beaconstac = no free, $49+ starter with 25,000 scan cap; QR Code Monkey = static-only free; market sweet spot Pro ~$12-16.
+   503→- Competitive strategy: "Unlimited scans on every plan" as killer differentiator (no competitor offers this on free), generous free tier (10 dynamic vs competitors' 2-3), India wedge (UPI as first-class), aggressive pricing (Pro $12 vs QR Tiger $16).
+   504→- Updated PLAN_LIMITS in types.ts:
+   505→  * Free: ₹0/$0 — 10 dynamic QR (was 5), 7-day analytics (was 0), unlimited scans, no watermark
+   506→  * Starter: ₹299/$5 (was ₹399/$7) — 50 dynamic (was 20), 30-day analytics
+   507→  * Pro: ₹699/$12 (was ₹899/$15) — 250 dynamic (was 100), 365-day analytics, bulk 1,000/batch (was 500), API, UPI dynamic
+   508→  * Business: ₹1,799/$29 (was ₹1,999/$35) — unlimited dynamic, unlimited analytics, bulk 5,000/batch (was 2,000), 10 seats (was 5), custom domain, white-label
+   509→- Rewrote pricing.tsx: new headline "Free forever. Paid plans that beat the market.", default to yearly+INR, added "Best value" badge on Business, added ∞ scans to all plan cards, added NEW competitor comparison table (5 competitors × 6 cols: provider/free plan/pro from/scan limits/UPI/watermark, CreateAnQRCode row highlighted "Us"), expanded feature matrix to 17 rows (added password protection, expiry, custom short URLs, UPI dynamic, all QR types, white-label), expanded FAQ to 8 (added unlimited-scans + static-never-expires Qs).
+   510→- Updated billing.tsx PLAN_FEATURES to match (50/250/unlimited dynamic, UPI dynamic payments on Pro, dedicated support on Business).
+   511→- Updated home.tsx PRICING_PREVIEW: Free "10 dynamic QR · ∞ scans", Pro ₹699 "250 dynamic QR · ∞ scans" + UPI dynamic payments, Business ₹1,799 unlimited.
+   512→- Fixed analytics API (api/analytics/summary/route.ts): removed hardcoded `if (plan === 'free') rangeDays = 0` and `hasAccess: plan !== 'free'` that blocked free-tier analytics; now driven by plan's analyticsDays (free=7d, starter=30d, pro=365d, business=unlimited via null). Preserved null=unlimited semantics (business) without the `?? 0` bug that collapsed unlimited→0.
+   513→- All feature-gating (dynamic QR limits, bulk batch, analytics) reads centralized PLAN_LIMITS so updates propagate automatically.
+   514→- Verified with agent-browser (mobile 390 + desktop 1440): pricing page renders 4 plans, prices correct (yearly INR ₹0/₹2,990/₹6,990/₹17,990; monthly USD $0/$5/$12/$29), competitor table with "Us" highlight, 17-row feature matrix, 8 FAQs, mobile stacks cleanly. End-to-end upgrade: signup → dashboard → billing → "Get Pro" → "Started pro trial!" toast → POST /api/billing/upgrade 200. Lint clean. Dev server healthy.
+   515→
+   516→Stage Summary:
+   517→- Competitor research complete (6+ competitors benchmarked).
+   518→- Pricing restructured to beat market: more generous free tier, unlimited scans everywhere, lower prices, India-first UPI.
+   519→- New pricing page with competitor comparison table + 17-feature matrix.
+   520→- Billing, home preview, and analytics API all updated for consistency.
+   521→- Upgrade flow verified end-to-end. Lint clean.
+   522→
+   523→---
+   524→Task ID: 5
+   525→Agent: main (orchestrator)
+   526→Task: Create 80+ QR code generator types — separate page per type, organized by category, full SEO, minimalist UI
+   527→
+   528→Work Log:
+   529→- Researched competitor QR type offerings via z-ai web_search (QR Tiger, Beaconstac/Uniqode, Bitly, QR Code Monkey, Supercode, SmartyTags). Competitors offer 11–30+ types; none organize by category or offer dedicated SEO pages per type.
+   530→- Changed QrTypeId from a closed union to `string` in types.ts to support 80+ types without a giant union (DB already stores qrType as String).
+   531→- Rewrote src/lib/qr-types.ts with 83 types across 11 categories:
+   532→  * Links & Web (8), Contact & Personal (6), Communication (9), Social Media (16), Payments (10), WiFi & Network (2), Location & Maps (4), Events & Meetings (6), Content & Media (10), Business & Marketing (10), Info & Text (2).
+   533→  * Added QrCategory type + QR_CATEGORIES array (each with label/description/icon).
+   534→  * Added urlType() helper for compact URL-wrapper types (social/payment profiles) — keeps builders DRY.
+   535→  * Kept all existing rich builders (vCard, WiFi, UPI, calendar, email, SMS) with full field validation.
+   536→  * Added getSeo(typeId) that generates consistent SEO content per type: title, description, keywords, 4-step how-to, 4 FAQs (free?/expire?/logo?/formats?) — templated per category for scalability, overridable per-type.
+   537→  * Added popularTypes() helper + popular flag on 12 key types.
+   538→- Rewrote Types directory (types-ref.tsx): category-grouped sections (default), search box, category filter pills (All/Popular + 11 categories), clean type cards (icon, label, description, Create link). Minimalist, mobile-first, 83 cards render fast in category sections.
+   539→- Created NEW dedicated per-type page (type-page.tsx): breadcrumbs (Home › All QR Types › Category › Type), SEO H1 ("{Type} QR Code Generator"), description, full generator (form + live preview + customizer + PNG/SVG download + save), How-to section (numbered steps), FAQ accordion (4 Qs), Related-types sidebar. Mobile-first: sticky preview + Content/Design tabs + sticky bottom action bar; desktop: 2-panel with sticky preview/customizer. Dynamically sets document.title, meta description, meta keywords, and syncs ?type=xxx URL on navigation (shareable + SEO).
+   540→- Added 'type-page' to ViewName in stores.ts; wired TypePageView into app-shell.tsx (lazy import, PUBLIC_VIEWS, render switch) + initial-load deep-link handler (reads ?type= from URL on first mount → opens type page).
+   541→- Updated home.tsx: 20+→80+ copy everywhere, hero "80+ QR types in 11 categories", redesigned QR TYPES section to show popular-type chips + 11 category cards (cleaner than 83 pills), type clicks now navigate to type-page. Removed unused useUIStore/setQuickCreateType.
+   542→- Updated layout.tsx metadata (80+ types) and pricing.tsx feature matrix ("All 80+ QR types").
+   543→- Verified with agent-browser (mobile 390 + desktop 1440):
+   544→  * Types directory: 11 category sections, 83 types, search ("bitcoin"→Bitcoin Address), category filter (Payments→10 types: UPI/GPay/PhonePe/Paytm/Bharat QR/PayPal/Venmo/Cash App/Bitcoin/Ethereum).
+   545→  * Type page (desktop, ?type=url): breadcrumb, H1 "Website URL QR Code Generator", form, how-to (4 steps), FAQ accordion expands, related-types sidebar, URL synced to ?type=url, document.title="Website URL QR Code Generator — Free & No Watermark | CreateAnQRCode".
+   546→  * Deep-link (?type=wifi): opens WiFi page directly, correct SEO title + H1.
+   547→  * Type page generator (mobile, ?type=upi): sticky preview + Content/Design tabs, filled VPA+name, downloaded PNG → "Downloaded PNG" toast. No errors.
+   548→- Lint clean. Dev server healthy.
+   549→
+   550→Stage Summary:
+   551→- 83 QR types across 11 categories, each with a dedicated, SEO-optimized page (H1, description, how-to, FAQ, related types, breadcrumbs) + full generator + live preview.
+   552→- Shareable URLs via ?type=xxx with dynamic document title/meta per type (SEO).
+   553→- Types directory organized by category with search + filter — clean, minimalist, mobile-first.
+   554→- Home + pricing + metadata updated to "80+".
+   555→- All existing functionality (create, billing, dashboard) preserved. Lint clean.
+   556→
+   557→---
+   558→Task ID: 6
+   559→Agent: main (orchestrator)
+   560→Task: Separate URL for each QR generator (path-style, e.g. /text-qr-code) — refresh-safe, shareable, SEO-friendly
+   561→
+   562→Work Log:
+   563→- Added slug helpers to qr-types.ts: typeSlug(id) → "wifi-network-qr-code" (slugify(label)+"-qr-code", strips parentheticals) and typeIdFromSlug(slug) reverse lookup.
+   564→- Rewrote router store (stores.ts) to sync the URL path with the view:
+   565→  * viewToPath(view,params): home→"/", type-page→"/{typeSlug}", others→"/{view}" (create/pricing/types/dashboard/qr-codes/etc.).
+   566→  * pathToView(path): reverse — recognises "-qr-code" suffix as a type slug, else a reserved view path, else home. No collisions (type slugs end in "-qr-code", view names don't).
+   567→  * navigate() now also does history.pushState to the slug path (in-app nav updates the URL bar).
+   568→  * syncFromUrl() reads window.location.pathname → sets view+params (used on mount + popstate). Also redirects legacy ?type=xxx share links to /{slug} (backward-compat).
+   569→- Added a Next.js rewrite in next.config.ts: { source: "/:slug", destination: "/" } (afterFiles). Serves the "/" AppShell page for any single-segment path so /wifi-qr-code survives refresh + direct visits. Multi-segment routes (/api/qr-codes, /q/[code], /_next/*) and / itself are NOT rewritten — verified API still 401s (auth), /q/[code] untouched.
+   570→- Wired AppShell: replaced the old ?type= deep-link handler with syncFromUrl() on mount + a popstate listener (browser back/forward). Added a routeReady guard (flipped via requestAnimationFrame to avoid setState-in-effect lint) so direct visits show a neutral loader instead of a home-page flash before the URL-matched type page mounts.
+   571→- Removed the manual ?type= URL manipulation from type-page.tsx (router owns the URL now). Hardened the per-type SEO head effect: re-applies document.title + meta description/keywords on [seo,typeId,user] and re-asserts via rAF + 60ms timeout to win the race against Next.js re-asserting the static layout metadata after the auth-state re-render. Restores the default title on unmount.
+   572→- Restarted the dev server (next.config changes need a restart) — fresh PID with rewrites active.
+   573→
+   574→Verified with agent-browser (desktop + mobile):
+   575→- Direct visit /wifi-network-qr-code → clean URL preserved, H1 "WiFi Network QR Code Generator", title "WiFi Network QR Code Generator — Free & No Watermark | CreateAnQRCode", type-specific meta description. No errors.
+   576→- Refresh on /upi-payment-qr-code → stays on the UPI page (URL + H1 + title all correct). ✅ refresh-safe.
+   577→- In-app nav: home → /types (URL bar updates) → click type card → /website-url-qr-code (URL bar updates, H1 + title correct).
+   578→- Back button: /website-url-qr-code → /types (popstate handled correctly).
+   579→- Backward-compat: ?type=upi → redirected to /upi-payment-qr-code (old share links keep working).
+   580→- 10 sampled slugs all 200 (website-url, text, wifi-network, upi-payment, vcard, bitcoin-address, spotify, zoom-meeting, google-review, telegram). /api/qr-codes preserved (401). / preserved (200).
+   581→- Mobile /bitcoin-address-qr-code: clean URL, SEO title, Content/Design tabs, filled address, downloaded PNG → "Downloaded PNG".
+   582→- Lint clean. Dev log healthy.
+   583→
+   584→Stage Summary:
+   585→- Every QR generator now has its own clean, shareable, refresh-safe URL path: /{type}-qr-code (e.g. /text-qr-code, /wifi-network-qr-code, /upi-payment-qr-code) — 83 dedicated URLs.
+   586→- Single "/" route preserved (via Next.js rewrite serving the AppShell for any /:slug) — no new route files, respects the "only / route" constraint.
+   587→- Full browser history support (back/forward), in-app nav updates the URL bar, legacy ?type= links auto-redirect to the new paths.
+   588→- Per-type SEO (title + meta) survives Next.js metadata re-assertion via a hardened re-apply effect.
+   589→- Lint clean. Dev server healthy.
+   590→
