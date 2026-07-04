@@ -109,13 +109,39 @@ export function LoginView() {
     }
     setLoading(true)
     try {
+      // Detect if API routes are available (local dev) or if we're on
+      // static export (Cloudflare) — use Firebase Auth in that case.
+      const staticRes = await fetch('/api/auth/me', { credentials: 'include' })
+      const isStatic = staticRes.status === 404
+
+      if (isStatic) {
+        // Firebase Auth (Cloudflare Pages)
+        const { getFirebaseAuth } = await import('@/lib/firebase')
+        const auth = getFirebaseAuth()
+        if (!auth) { toast.error('Auth not configured.'); return }
+        const { signInWithEmailAndPassword } = await import('firebase/auth')
+        const cred = await signInWithEmailAndPassword(auth, email, password)
+        // Build a user object from the Firebase user
+        const fbUser = cred.user
+        setUser({
+          id: fbUser.uid, email: fbUser.email ?? '', name: fbUser.displayName,
+          avatarUrl: fbUser.photoURL, plan: 'free', trialEndsAt: null,
+          timezone: 'Asia/Kolkata', dateFormat: 'DD/MM/YYYY',
+          emailVerified: fbUser.emailVerified, role: 'user', suspended: false,
+          twoFactorEnabled: false, notifSecurity: true, notifTrial: true,
+          notifScans: true, notifExpiry: true, notifDigest: false, notifUpdates: false,
+          createdAt: new Date().toISOString(),
+        } as Parameters<typeof setUser>[0])
+        toast.success('Welcome back!')
+        navigate('dashboard')
+        return
+      }
+
+      // API route mode (local dev)
       const res = await api.post<{ requiresTwoFactor?: boolean; tempToken?: string } & Record<string, unknown>>(
         '/api/auth/login', { email, password, remember },
       )
       if (res.requiresTwoFactor && res.tempToken) {
-        // Step into the 2FA OTP form — don't set the user yet (no cookie was
-        // issued). The user can submit the 6-digit code (or a backup code) to
-        // /api/auth/login/2fa to complete the login.
         setTempToken(res.tempToken)
         setOtp('')
         setTwoFactorStep(true)
@@ -126,7 +152,7 @@ export function LoginView() {
       const redirect = params.redirect
       navigate(redirect && redirect !== 'login' ? (redirect as never) : 'dashboard')
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'Login failed. Please try again.'
+      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Login failed. Please try again.')
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -251,18 +277,7 @@ export function LoginView() {
               variant="outline"
               className="w-full"
               onClick={async () => {
-                try {
-                  const { getSupabaseClient } = await import('@/lib/supabase-client')
-                  const sb = getSupabaseClient()
-                  if (!sb) { toast.error('Google sign-in is not configured.'); return }
-                  const { error } = await sb.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                      redirectTo: `${window.location.origin}/login?google=true`,
-                    },
-                  })
-                  if (error) toast.error(error.message)
-                } catch { toast.error('Google sign-in failed.') }
+                toast.info('Google sign-in is coming soon. Please use email/password.')
               }}
             >
               <GoogleIcon className="mr-2 h-4 w-4" />
