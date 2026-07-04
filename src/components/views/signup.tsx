@@ -122,21 +122,21 @@ export function SignupView() {
         // Firebase Auth (Cloudflare Pages)
         const { getFirebaseAuth } = await import('@/lib/firebase')
         const auth = getFirebaseAuth()
-        if (!auth) { toast.error('Auth not configured.'); return }
+        if (!auth) { toast.error('Sign-in service is not available. Please try again later.'); return }
         const { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } = await import('firebase/auth')
         const cred = await createUserWithEmailAndPassword(auth, email, password)
         if (name && cred.user) {
           await updateProfile(cred.user, { displayName: name })
         }
-        // Send verification email via Firebase
+        // Send verification email
         try {
           await sendEmailVerification(cred.user, {
             url: window.location.origin + '/login',
             handleCodeInApp: true,
           })
-          toast.success('Account created! Check your email for verification.')
+          toast.success('Account created! A confirmation email has been sent to ' + email + '. Please verify your email to complete registration.')
         } catch {
-          toast.success('Account created! Welcome to CreateAnQRCode.')
+          toast.success('Account created! Please verify your email.')
         }
         const fbUser = cred.user
         setUser({
@@ -158,7 +158,8 @@ export function SignupView() {
       toast.success('Account created! Welcome to CreateAnQRCode.')
       navigate('verify-email', { email })
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Sign up failed. Please try again.')
+      let msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Sign up failed. Please try again.')
+      msg = msg.replace(/^Firebase:\s*/i, '').replace(/\(auth\/[^)]*\)/g, '').trim() || 'Sign up failed. Please try again.'
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -210,7 +211,7 @@ export function SignupView() {
                     // Firebase Google Auth (Cloudflare)
                     const { getFirebaseAuth } = await import('@/lib/firebase')
                     const auth = getFirebaseAuth()
-                    if (!auth) { toast.error('Auth not configured.'); return }
+                    if (!auth) { toast.error('Sign-in service is not available. Please try again later.'); return }
                     const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth')
                     const provider = new GoogleAuthProvider()
                     setGoogleLoading(true)
@@ -239,7 +240,8 @@ export function SignupView() {
                     if (error) toast.error(error.message)
                   }
                 } catch (err) {
-                  const msg = err instanceof Error ? err.message : 'Google sign-in failed.'
+                  let msg = err instanceof Error ? err.message : 'Google sign-in failed.'
+                  msg = msg.replace(/^Firebase:\s*/i, '').replace(/\(auth\/[^)]*\)/g, '').trim() || 'Google sign-in failed.'
                   toast.error(msg)
                   setGoogleLoading(false)
                 }
