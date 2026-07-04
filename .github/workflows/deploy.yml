@@ -32,23 +32,23 @@ jobs:
 
       - name: Build static site for Cloudflare
         run: |
-          # Switch to static export mode
           sed -i 's/output: "standalone"/output: "export"/' next.config.ts
-
-          # Remove server-only routes that can't be statically exported
           rm -rf src/app/api
           rm -rf "src/app/q"
           rm -rf "src/app/[...slug]"
-          rm -rf src/app/sitemap.xml
+          rm -f src/app/sitemap.ts
           rm -f src/middleware.ts
-
-          # Clear cache
           rm -rf .next
-
-          # Build — NEXT_PUBLIC env vars are baked at build time
           NEXT_PUBLIC_SUPABASE_URL=https://ofwkrztsqlhvhffyltfh.supabase.co \
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9md2tyenRzcWxodmhmZnlsdGZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4MjIwODIsImV4cCI6MjA5ODM5ODA4Mn0.juIue0-yhNH3GugzOlUHcywPHtYAvy8E_NLejQLm-WI \
           NEXT_PUBLIC_SITE_URL=https://createanqrcode.pages.dev \
+          NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyC5jux4zdX5AZr-WYhE_R4KdLsqp3LP0yw \
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=studio-2119804508-15e7e.firebaseapp.com \
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID=studio-2119804508-15e7e \
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=studio-2119804508-15e7e.firebasestorage.app \
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=335413901817 \
+          NEXT_PUBLIC_FIREBASE_APP_ID=1:335413901817:web:31a1a509ad9c62614e2528 \
+          NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-FHWCYDPM8J \
           npx next build
 
       - name: Deploy to Cloudflare Pages
