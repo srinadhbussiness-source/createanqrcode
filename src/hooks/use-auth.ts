@@ -101,7 +101,7 @@ export function useAuth() {
 
     if (staticMode) {
       const auth = getAuth()
-      if (!auth) throw new Error('Firebase not configured')
+      if (!auth) throw new Error('Sign-in service is not available.')
       const cred = await createUserWithEmailAndPassword(auth, email, password)
       if (name && cred.user) {
         await updateProfile(cred.user, { displayName: name })
@@ -117,7 +117,7 @@ export function useAuth() {
 
     if (staticMode) {
       const auth = getAuth()
-      if (!auth) throw new Error('Firebase not configured')
+      if (!auth) throw new Error('Sign-in service is not available.')
       return signInWithEmailAndPassword(auth, email, password)
     } else {
       return api.post('/api/auth/login', { email, password })
