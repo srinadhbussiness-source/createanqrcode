@@ -123,22 +123,31 @@ export function SignupView() {
         const { getFirebaseAuth } = await import('@/lib/firebase')
         const auth = getFirebaseAuth()
         if (!auth) { toast.error('Auth not configured.'); return }
-        const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth')
+        const { createUserWithEmailAndPassword, updateProfile, sendEmailVerification } = await import('firebase/auth')
         const cred = await createUserWithEmailAndPassword(auth, email, password)
         if (name && cred.user) {
           await updateProfile(cred.user, { displayName: name })
+        }
+        // Send verification email via Firebase
+        try {
+          await sendEmailVerification(cred.user, {
+            url: window.location.origin + '/login',
+            handleCodeInApp: true,
+          })
+          toast.success('Account created! Check your email for verification.')
+        } catch {
+          toast.success('Account created! Welcome to CreateAnQRCode.')
         }
         const fbUser = cred.user
         setUser({
           id: fbUser.uid, email: fbUser.email ?? '', name: name || fbUser.displayName,
           avatarUrl: fbUser.photoURL, plan: 'free', trialEndsAt: null,
           timezone: 'Asia/Kolkata', dateFormat: 'DD/MM/YYYY',
-          emailVerified: fbUser.emailVerified, role: 'user', suspended: false,
+          emailVerified: false, role: 'user', suspended: false,
           twoFactorEnabled: false, notifSecurity: true, notifTrial: true,
           notifScans: true, notifExpiry: true, notifDigest: false, notifUpdates: false,
           createdAt: new Date().toISOString(),
         } as Parameters<typeof setUser>[0])
-        toast.success('Account created! Welcome to CreateAnQRCode.')
         navigate('dashboard')
         return
       }
