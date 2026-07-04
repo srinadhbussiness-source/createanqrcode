@@ -118,7 +118,7 @@ export function LoginView() {
         // Firebase Auth (Cloudflare Pages)
         const { getFirebaseAuth } = await import('@/lib/firebase')
         const auth = getFirebaseAuth()
-        if (!auth) { toast.error('Auth not configured.'); return }
+        if (!auth) { toast.error('Sign-in service is not available. Please try again later.'); return }
         const { signInWithEmailAndPassword } = await import('firebase/auth')
         const cred = await signInWithEmailAndPassword(auth, email, password)
         // Build a user object from the Firebase user
@@ -152,7 +152,8 @@ export function LoginView() {
       const redirect = params.redirect
       navigate(redirect && redirect !== 'login' ? (redirect as never) : 'dashboard')
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Login failed. Please try again.')
+      let msg = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Login failed. Please try again.')
+      msg = msg.replace(/^Firebase:\s*/i, '').replace(/\(auth\/[^)]*\)/g, '').trim() || 'Login failed. Please try again.'
       toast.error(msg)
     } finally {
       setLoading(false)
@@ -286,7 +287,7 @@ export function LoginView() {
                     // Firebase Google Auth (Cloudflare)
                     const { getFirebaseAuth } = await import('@/lib/firebase')
                     const auth = getFirebaseAuth()
-                    if (!auth) { toast.error('Auth not configured.'); return }
+                    if (!auth) { toast.error('Sign-in service is not available. Please try again later.'); return }
                     const { GoogleAuthProvider, signInWithPopup } = await import('firebase/auth')
                     const provider = new GoogleAuthProvider()
                     setGoogleLoading(true)
@@ -317,7 +318,8 @@ export function LoginView() {
                     if (error) toast.error(error.message)
                   }
                 } catch (err) {
-                  const msg = err instanceof Error ? err.message : 'Google sign-in failed.'
+                  let msg = err instanceof Error ? err.message : 'Google sign-in failed.'
+                  msg = msg.replace(/^Firebase:\s*/i, '').replace(/\(auth\/[^)]*\)/g, '').trim() || 'Google sign-in failed.'
                   toast.error(msg)
                   setGoogleLoading(false)
                 }
